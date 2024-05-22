@@ -22,6 +22,7 @@ import SMCDEL.Internal.MyHaskCUDD
 import qualified SMCDEL.Explicit.DEMO_S5 as DEMO_S5
 import qualified SMCDEL.Explicit.S5
 import qualified SMCDEL.Symbolic.S5
+import qualified SMCDEL.Symbolic.S5_DD
 import qualified SMCDEL.Symbolic.S5_CUDD
 import qualified SMCDEL.Translations.S5
 import qualified SMCDEL.Translations.K
@@ -47,6 +48,10 @@ findNumberCacBDD :: Int -> Int -> Int
 findNumberCacBDD = findNumberWith (cacMudScnInit,SMCDEL.Symbolic.S5.evalViaBdd) where
   cacMudScnInit n m = ( SMCDEL.Symbolic.S5.KnS (mudPs n) (SMCDEL.Symbolic.S5.boolBddOf Top) [ (show i,delete (P i) (mudPs n)) | i <- [1..n] ], mudPs m )
 
+findNumberDD :: Int -> Int -> Int
+findNumberDD = findNumberWith (ddMudScnInit,SMCDEL.Symbolic.S5_DD.evalViaBdd) where
+  ddMudScnInit n m = ( SMCDEL.Symbolic.S5_DD.KnS (mudPs n) (SMCDEL.Symbolic.S5_DD.boolBddOf Top) [ (show i,delete (P i) (mudPs n)) | i <- [1..n] ], mudPs m )
+
 findNumberCUDD :: Manager -> Int -> Int -> Int
 findNumberCUDD mgr n m =
   let cuddMudScnInit = ( SMCDEL.Symbolic.S5_CUDD.KnS mgr (mudPs n) (SMCDEL.Symbolic.S5_CUDD.boolDdOf mgr Top :: Dd B O1 I1) [ (show i, delete (P i) (mudPs n)) | i <- [1..n] ], mudPs m )
@@ -71,7 +76,10 @@ mudKrpInit n m = (SMCDEL.Explicit.S5.KrMS5 ws rel val, cur) where
     setForAt i s = delete (P i) $ setAt s
     setAt s = map fst $ filter snd (apply val s)
   val         = zip ws table
-  ((cur,_):_) = filter (\(_,ass)-> sort (map fst $ filter snd ass) == [P 1..P m]) val
+  cur =
+    case filter (\(_,ass)-> sort (map fst $ filter snd ass) == [P 1..P m]) val of
+      ((thisCur,_):_) -> thisCur
+      _ -> error "No current state found."
   table = foldl buildTable [[]] [P k | k<- [1..n]]
   buildTable partrows p = [ (p,v):pr | v <-[True,False], pr<-partrows ]
 
@@ -120,26 +128,27 @@ benchMain = do
   defaultMainWith myConfig (map mybench
     [ ("Triangle"  , findNumberTriangle  , [7..40] )
     , ("CacBDD"    , findNumberCacBDD    , [3..40] )
+    , ("DD"        , findNumberDD        , [3..30] )
     , ("CUDD"      , findNumberCUDD mgr  , [3..40] )
     , ("CUDDz"     , findNumberCUDDz mgr , [3..40] )
     , ("K"         , findNumberK         , [3..12] )
     , ("DEMOS5"    , findNumberDemoS5    , [3..12] )
     , ("Trans"     , findNumberTrans     , [3..12] )
-    , ("TransK"    , findNumberTransK    , [3..11] ) ])
+    , ("TransK"    , findNumberTransK    , [3..10] ) ])
   where
     mybench (name,f,range) = bgroup name $ map (run f) range
     run f k = bench (show k) $ whnf (\n -> f n n) k
     myConfig = defaultConfig { Criterion.Types.csvFile = Just theCSVname }
 
 theCSVname :: String
-theCSVname = "muddychildren-results.csv"
+theCSVname = "bench/muddychildren-results.csv"
 
 prepareMain :: IO ()
 prepareMain = do
   oldResults <- doesFileExist theCSVname
   when oldResults $ do
     putStrLn "moving away old results!"
-    renameFile theCSVname ("OLD-results-" ++ theCSVname)
+    renameFile theCSVname (theCSVname ++ ".OLD")
     oldDATfile <- doesFileExist (theCSVname ++ ".dat")
     when oldDATfile $ removeFile (theCSVname ++ ".dat")
 
