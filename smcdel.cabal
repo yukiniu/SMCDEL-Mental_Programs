@@ -78,6 +78,7 @@ library
       SMCDEL.Internal.TexDisplay
       SMCDEL.Internal.Token
       SMCDEL.Language
+      SMCDEL.Mental_Programs.Syntax_Semantics
       SMCDEL.Other.BDD2Form
       SMCDEL.Other.MCTRIANGLE
       SMCDEL.Other.Planning
