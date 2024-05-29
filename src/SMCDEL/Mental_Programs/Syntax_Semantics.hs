@@ -9,6 +9,9 @@ import SMCDEL.Symbolic.K
 -- import SMCDEL.Symbolic.S5 (unsafeParseS)
 
 import Test.QuickCheck
+import SMCDEL.Symbolic.S5 (boolBddOf)
+
+import Debug.Trace
 
 -- checks whether a formula is true given a list of true propositions
 satisfies :: State -> Form -> Bool
@@ -23,7 +26,7 @@ satisfies a (Equi f g)  = satisfies a f == satisfies a g
 satisfies _ (K _ _) = error "This is not a boolean formula"
 satisfies _ (Kw _ _) = error "This is not a boolean formula"
 satisfies _ (PubAnnounce _ _) = error "This is not a boolean formula"
-satisfies _ (Xor _) = error "not implemented by this system"
+satisfies a (Xor forms) = odd $ length (filter id $ map (satisfies a) forms)
 satisfies _ (Forall _ _) = error "not implemented by this system"
 satisfies _ (Exists _ _) = error "not implemented by this system"
 satisfies _ (Ck _ _) = error "not implemented by this system"
@@ -53,7 +56,7 @@ legitStates v ls = [s | s <- allStates v, all (\l -> s `satisfies` l) ls]
 toSet :: Ord a => [a] -> [a]
 toSet = nub . sort
 
--- Semantics of Mental Programs 
+-- Semantics of Mental Programs
 rel :: Vocab -> [Statelaw] -> MenProg -> State -> State -> Bool
 rel _ _ (Settop p) s t = toSet t == toSet (s ++ [p])
 rel _ _ (Setbot p) s t = toSet t == toSet s \\ [p]
@@ -108,17 +111,20 @@ translate' _ _ = error "Illegal inputs"
 -- The translation from Bdds to Mental Programs
 -- The variables in Bdd are primed already
 translate'' :: Vocab -> Bdd -> MenProg
-translate'' v b
-  | b == bot = Test Bot
-  | b == top && v == [] = Test Top
-  | b == top = Seq (Cup (Setbot p) (Settop p)) (translate'' ps top)
-  | mvP (head v) == P k = Cup (Seq (Test $ Neg $ PrpF p) (translate'' v r)) (Seq (Test $ PrpF p) (translate'' v l))
-  | cpP (head v) == P k = Cup (Seq (Setbot p) (translate'' ps r)) (Seq (Settop p) (translate'' ps l))
-  | otherwise = Seq (Cup (Setbot p) (Settop p)) (translate'' ps b)
-  where
+translate'' v b = trace (show (v,b)) fun where
+  fun
+    | b == bot = Test Bot
+    | b == top && v == [] = Test Top
+    | b == top = Seq (Cup (Setbot p) (Settop p)) (translate'' ps top)
+    | v == [] = error (show b)
+    | mvP (head v) == P k = Cup (Seq (Test $ Neg $ PrpF p) (translate'' v r)) (Seq (Test $ PrpF p) (translate'' v l))
+    | cpP (head v) == P k = Cup (Seq (Setbot p) (translate'' ps r)) (Seq (Settop p) (translate'' ps l))
+    | otherwise = Seq (Cup (Setbot p) (Settop p)) (translate'' ps b)
+    where
       p = head v
       ps = tail v
       (Just k) = firstVarOf b
+        --firstVarOf b
       l = thenOf b
       r = elseOf b
 -- translate'' _ bot = Test Bot
@@ -138,3 +144,13 @@ examples2 = [rel (map P [0,1]) [Top] (translate'' [P 0, P 1] top) [P 1] [P 0, P 
 
 test :: IO ()
 test = quickCheck (forAll (randomboolformWith [P 1, P 2] 7) (\(BF f) -> f == f))
+
+test1 :: IO ()
+test1 = verboseCheck (forAll (randomboolformWith voc' 7) (\(BF f) -> rel voc [] (translate'' voc (boolBddOf f)) x y == ((mv x ++ cp y) `satisfies` f)))
+    where voc = [P 0]
+          voc' = [P 0, P 1]
+          x = [] -- need to be subsets of vocc
+          y = [P 0]
+
+
+-- Things needed: something from Form to Bdd
