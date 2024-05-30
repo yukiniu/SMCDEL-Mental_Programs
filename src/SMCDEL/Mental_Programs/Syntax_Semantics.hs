@@ -1,4 +1,5 @@
 module SMCDEL.Mental_Programs.Syntax_Semantics where
+import Control.Monad
 import Data.List
 import SMCDEL.Language
 import Data.HasCacBDD hiding (Top,Bot) -- to get "Bdd" and "con" etc.
@@ -11,7 +12,7 @@ import SMCDEL.Symbolic.K
 import Test.QuickCheck
 import SMCDEL.Symbolic.S5 (boolBddOf)
 
-import Debug.Trace
+import Debug.Trace -- should be removed again for production ;)
 
 -- checks whether a formula is true given a list of true propositions
 satisfies :: State -> Form -> Bool
@@ -25,6 +26,8 @@ satisfies a (Impl f g)  = not (satisfies a f) || satisfies a g
 satisfies a (Equi f g)  = satisfies a f == satisfies a g
 satisfies _ (K _ _) = error "This is not a boolean formula"
 satisfies _ (Kw _ _) = error "This is not a boolean formula"
+satisfies _ (Dk _ _) = error "This is not a boolean formula"
+satisfies _ (Dkw _ _) = error "This is not a boolean formula"
 satisfies _ (PubAnnounce _ _) = error "This is not a boolean formula"
 satisfies a (Xor forms) = odd $ length (filter id $ map (satisfies a) forms)
 satisfies _ (Forall _ _) = error "not implemented by this system"
@@ -149,8 +152,33 @@ test1 :: IO ()
 test1 = verboseCheck (forAll (randomboolformWith voc' 7) (\(BF f) -> rel voc [] (translate'' voc (boolBddOf f)) x y == ((mv x ++ cp y) `satisfies` f)))
     where voc = [P 0]
           voc' = [P 0, P 1]
-          x = [] -- need to be subsets of vocc
+          x = [] -- need to be subsets of voc
           y = [P 0]
 
+test2 :: IO ()
+test2 = verboseCheck (forAll (randomboolformWith voc' 7) (\(BF f) -> rel voc [] (translate'' voc (boolBddOf f)) x y == ((mv x ++ cp y) `satisfies` f)))
+    where voc = map P [0..6]
+          voc' = mv voc ++ cp voc
+          x = [P 0, P 1] -- need to be subsets of voc
+          y = [P 1, P 2]
 
--- Things needed: something from Form to Bdd
+
+test3 :: IO ()
+test3 = verboseCheck (forAll (liftArbitrary2 (randomboolformWith voc' 7) (sublistOf voc))
+        (\(BF f, x) -> rel voc [] (translate'' voc (boolBddOf f)) x y == ((mv x ++ cp y) `satisfies` f)))
+    where voc = map P [0..3]
+          voc' = mv voc ++ cp voc
+          -- x = sublistOf voc -- need to be subsets of voc
+          y = [P 1, P 2]
+
+test4 :: IO ()
+test4 = verboseCheck (forAll (liftM3 (,,) (randomboolformWith voc' 7) (sublistOf voc) (sublistOf voc))
+        (\(BF f, x, y) -> rel voc [] (translate'' voc (boolBddOf f)) x y == ((mv x ++ cp y) `satisfies` f)))
+    where voc = map P [0..3]
+          voc' = mv voc ++ cp voc
+          -- x = sublistOf voc -- need to be subsets of voc
+          -- y = [P 1, P 2]
+
+
+
+          
