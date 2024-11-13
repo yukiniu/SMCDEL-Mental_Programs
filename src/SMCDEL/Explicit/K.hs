@@ -1,5 +1,21 @@
 {-# LANGUAGE FlexibleInstances, MultiParamTypeClasses #-}
 
+{- |
+
+Standard Kripke Models for the logic \(\mathsf{K}\).
+
+In contrast to "SMCDEL.Explicit.S5" where each agent is assigned an equivalence
+relation over worlds, here we allow arbitrary relations.
+
+References used here:
+
+- [GK2016]
+  Valentin Goranko and Louwe B. Kuijer (2016):
+  /On the Length and Depth of Temporal Formulae Distinguishing Non-bisimilar Transition Systems/.
+  <https://doi.org/10.1109/TIME.2016.26>
+
+-}
+
 module SMCDEL.Explicit.K where
 
 import Control.Arrow ((&&&),second)
@@ -16,6 +32,11 @@ import SMCDEL.Explicit.S5 (Action,Bisimulation,HasWorlds,World,worldsOf)
 import SMCDEL.Internal.Help (alleqWith,lfp)
 import SMCDEL.Internal.TexDisplay
 
+-- * Kripke Models
+
+-- | A Kripke model is a map from worlds to pairs of
+-- (i) assignments, i.e.\ maps from propositions to `Bool`, and
+-- (ii) relations, i.e.\ maps from agents to lists of worlds.
 newtype KripkeModel = KrM (M.Map World (M.Map Prp Bool, M.Map Agent [World]))
   deriving (Eq,Ord,Show)
 
@@ -93,9 +114,13 @@ instance Arbitrary KripkeModel where
     return $ KrM $ M.fromList m
   shrink krm = [ krm `withoutWorld` w | length (worldsOf krm) > 1, w <- delete 0 (worldsOf krm) ]
 
+-- | Remove a world from a Kripke model.
 withoutWorld :: KripkeModel -> World -> KripkeModel
 withoutWorld (KrM m) w = KrM $ M.map (second (M.map (delete w))) $ M.delete w m
 
+-- * Semantics
+
+-- | We now implement the standard Kripke semantics.
 eval :: PointedModel -> Form -> Bool
 eval _     Top           = True
 eval _     Bot           = False
@@ -157,6 +182,7 @@ instance Update MultipointedModel Form where
   unsafeUpdate (m,ws) f =
     let newm = unsafeUpdate m f in (newm, ws `intersect` worldsOf newm)
 
+-- | Group announcement as an action model.
 groupAnnounceAction :: [Agent] -> [Agent] -> Form -> PointedActionModel
 groupAnnounceAction everyone listeners f = (ActM am, 1) where
   am = M.fromList

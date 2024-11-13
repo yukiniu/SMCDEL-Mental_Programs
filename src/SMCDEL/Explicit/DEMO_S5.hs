@@ -30,7 +30,7 @@ instance Show state => Show (EpistM state) where
     , show ags, "\n  "
     , show val, "\n  "
     , show accs, "\n  "
-    , show points, "\n"
+    , show points
     ]
 
 rel :: Show a => Agent -> EpistM a -> Erel a

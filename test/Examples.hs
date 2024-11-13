@@ -50,15 +50,13 @@ main = hspec $ do
           (Disj [ Bot, PrpF $ P 3, Bot ])
           (Conj [ Top , Xor [Top,Kw alice (PrpF (P 4))] , PubAnnounce (PrpF (P 5)) (Kw bob $ PrpF (P 5)) ])
     it "we can LaTeX the testForm" $ tex testForm === intercalate "\n"
-        [ " \\forall \\{ p_{3} \\} ( \\bigvee \\{"
+        [ " \\ensuremath{  \\forall \\{ p_{3} \\} ( \\bigvee \\{"
         , " \\bot , p_{3} ,\\bot \\} \\leftrightarrow \\bigwedge \\{"
-        , "\\top , ( \\top \\oplus K^?_{\\text{Alice}} p_{4} ) ,[! p_{5} ] K^?_{\\text{Bob}} p_{5} \\} ) " ]
+        , "\\top , ( \\top \\oplus K^?_{\\text{Alice}} p_{4} ) ,[! p_{5} ] K^?_{\\text{Bob}} p_{5} \\} )  } " ]
     it "svgViaTex works for modelA" $
         isInfixOf "stroke-linecap:butt" (svgViaTex modelA)
-    prop "svgViaTex can yield strings of different length" $
-      expectFailure (\m1 m2 ->
-            length (svgViaTex (m1::Exp.KripkeModelS5,0::Exp.World))
-        === length (svgViaTex (m2::Exp.KripkeModelS5,0::Exp.World)) )
+    it "svgViaTex works for knsA" $
+        isInfixOf "stroke-dash" (svgViaTex knsA)
   describe "SMCDEL.Symbolic.S5" $ do
     prop "boolEvalViaBdd agrees on simplified formulas" $
       \(BF bf) props -> let truths = nub props in
@@ -81,13 +79,13 @@ main = hspec $ do
       \b -> b === boolBddOf (formOf b)
     prop "boolBddOf (Equi bf (formOf (boolBddOf bf))) == boolBddOf Top" $
       \(BF bf) -> boolBddOf (Equi bf (formOf (boolBddOf bf))) === boolBddOf Top
-  describe "SMCDEL.Explicit.S5" $ do
-    prop "generatedSubmodel preserves truth" $
+  describe "SMCDEL.Explicit.S5" $ modifyMaxSuccess (const 1000) $ do
+    prop "generatedSubmodel preserves truth (without global modality)" $
       \m f -> let pm = (m::Exp.KripkeModelS5, head $ Exp.worldsOf m)
-              in isTrue pm f === isTrue (Exp.generatedSubmodel pm) f
-    prop "optimize preserves truth" $
+              in not (containsGlobal f) ==> isTrue pm f === isTrue (Exp.generatedSubmodel pm) f
+    prop "optimize preserves truth (without global modality)" $
       \m f -> let pm = (m::Exp.KripkeModelS5, head $ Exp.worldsOf m)
-              in isTrue pm f === isTrue (optimize (vocabOf m) pm) f
+              in not (containsGlobal f) ==> isTrue pm f === isTrue (optimize (vocabOf m) pm) f
     prop "optimize can shrink the model" $
       expectFailure (\m -> let pm = (m::Exp.KripkeModelS5, head $ Exp.worldsOf m)
                            in length (Exp.worldsOf pm) <= length (Exp.worldsOf (optimize (vocabOf m) pm)) )
@@ -166,8 +164,8 @@ main = hspec $ do
       sapKnStruct |= Impl sapProtocol (Conj [xIs 4, yIs 13])
     it "Sum and Product: explaining the solution." $
       map sapExplainState sapSolutions `shouldBe` ["x = 4, y = 13, x+y = 17 and x*y = 52"]
-    it "What Sum: There are 330 solutions." $
-      length SMCDEL.Examples.WhatSum.wsSolutions === 330
+    it "What Sum: There are 2 solutions (assuming bound 10)." $
+      length SMCDEL.Examples.WhatSum.wsSolutions === 2
     it "What Sum: The first solution is [('a',1),('b',3),('c',2)]" $
       wsExplainState (head wsSolutions) `shouldBe` [('a',1),('b',3),('c',2)]
   let ags = agentsOf myMudGenKrpInit

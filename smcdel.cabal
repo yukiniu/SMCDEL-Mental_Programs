@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.36.0.
+-- This file has been generated from package.yaml by hpack version 0.37.0.
 --
 -- see: https://github.com/sol/hpack
 
@@ -73,7 +73,6 @@ library
       SMCDEL.Internal.Help
       SMCDEL.Internal.Lex
       SMCDEL.Internal.Parse
-      SMCDEL.Internal.Sanity
       SMCDEL.Internal.TaggedBDD
       SMCDEL.Internal.TexDisplay
       SMCDEL.Internal.Token

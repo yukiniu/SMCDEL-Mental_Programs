@@ -26,7 +26,6 @@ import Text.Read (readMaybe)
 
 import SMCDEL.Internal.Lex
 import SMCDEL.Internal.Parse
-import SMCDEL.Internal.Sanity
 import SMCDEL.Symbolic.S5
 import SMCDEL.Internal.TexDisplay
 import SMCDEL.Translations.S5

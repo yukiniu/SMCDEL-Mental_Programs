@@ -1,5 +1,19 @@
 # SMCDEL Changelog
 
+## upcoming
+
+New:
+
+- Language: add global modality `G`
+
+Changed:
+
+- More haddock documentation
+- Language: Remove `PubAnnounceW`, `Announce` and `AnnounceW`
+- Improve `pubAnnounceTest` and `groupAnnounceTest`
+- Bug fix: in `transformerToActionModelWithG` do not filter
+- Bug fix: in `bddOf` for `Dia` use `unsafeUpdate`
+
 ## v1.3.0 (2022-04-24)
 
 New:

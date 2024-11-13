@@ -1,7 +1,9 @@
 {-# LANGUAGE FlexibleInstances, TupleSections #-}
 
 {- |
-Converting between Kripke Models and Belief Structures
+
+Converting between Kripke Models and Belief Structures.
+
 -}
 
 module SMCDEL.Translations.K where
@@ -32,10 +34,13 @@ blsToKripke (f@(BlS _ _ obdds), curs) = (m, cur) where
   reachFromFor s a = filter (\t -> tagBddEval (mv s ++ cp t) (obdds ! a)) (statesOf f)
   cur = fromJust (lookup curs links)
 
+-- * From Kripke Models to Belief Structures
+
 kripkeToBls :: PointedModel -> BelScene
 kripkeToBls pm@(m,_) | distinctVal m = kripkeToBlsUnsafe pm
                      | otherwise     = kripkeToBlsUnsafe (ensureDistinctVal pm)
 
+-- | Unsafe version of `kripkeToBls`, assuming we already have distinct valuations.
 kripkeToBlsUnsafe :: PointedModel -> BelScene
 kripkeToBlsUnsafe (m, cur) = (BlS vocab lawbdd obdds, truthsInAt m cur) where
   vocab  = vocabOf m
@@ -43,6 +48,18 @@ kripkeToBlsUnsafe (m, cur) = (BlS vocab lawbdd obdds, truthsInAt m cur) where
   obdds  :: M.Map Agent RelBDD
   obdds  = M.fromList [ (i, restrictLaw <$> relBddOfIn i m <*> (con <$> mvBdd lawbdd <*> cpBdd lawbdd)) | i <- agents ]
   agents = agentsOf m
+
+{- $
+
+If valuations are not unique, we need to add propositions.
+This can be done in different ways, leading to different numbers of propositions to be added.
+In the method below, if there maximally \(k\) many worlds with the same valuation, then we add \(\log_2 k\) many new atomic propositions.
+This is optimal in the sense that less propositions will not be enough to distinguish all worlds.
+However, this also includes bisimilar worlds which we would not want to be distignuished anyway.
+Hence the input model should first be minimized and then converted.
+Alternatively, the output structure can be optimized after the conversion.
+
+-}
 
 ensureDistinctVal :: PointedModel -> PointedModel
 ensureDistinctVal (krm@(KrM m), cur) = if distinctVal krm then (krm,cur) else (KrM newM,cur) where
@@ -53,6 +70,10 @@ ensureDistinctVal (krm@(KrM m), cur) = if distinctVal krm then (krm,cur) else (K
   addValForIndex k = M.fromList [ (p, p `elem` (reverse (powerset addProps) !! k) ) | p <- addProps ]
   newM = M.mapWithKey (\w (val,r) -> (M.union val (addValForIndex (indexOf w)),r)) m
 
+-- * From Action Models to Transformers
+
+-- | This generalizes `SMCDEL.Translations.S5.actionToEvent``
+-- Note that we don't need extra propositions for the action relation any longer.
 actionToEvent :: PointedActionModel -> Event
 actionToEvent (ActM am, faction) = (Trf addprops addlaw changelaw eventObs, efacts) where
   actions      = M.keys am
@@ -71,6 +92,8 @@ actionToEvent (ActM am, faction) = (Trf addprops addlaw changelaw eventObs, efac
                  disSet [ booloutof (cp $ ell there) (cp addprops) | there <- rel ch ! i ]
   efacts       = ell faction
 
+-- * From Transformers to Action Models
+
 eventToAction :: Event -> PointedActionModel
 eventToAction (t@(Trf addprops addlaw changelaw eventObs), efacts) = (ActM am, faction) where
   actlist    = zip (powerset addprops) [0..]
@@ -80,3 +103,5 @@ eventToAction (t@(Trf addprops addlaw changelaw eventObs), efacts) = (ActM am, f
   relFor ps  = M.fromList [(i,rFor i) | i <- agentsOf t] where
     rFor i   = concatMap (\(qs,b) -> [ b | tagBddEval (mv ps ++ cp qs) (eventObs ! i), preFor qs /= Bot ]) actlist
   faction    = apply actlist efacts
+
+-- TODO unpointed and multipointed translations

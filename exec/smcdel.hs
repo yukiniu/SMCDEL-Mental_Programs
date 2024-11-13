@@ -15,7 +15,6 @@ import System.IO (Handle,hClose,hPutStrLn,stderr,stdout,openTempFile)
 
 import SMCDEL.Internal.Lex
 import SMCDEL.Internal.Parse
-import SMCDEL.Internal.Sanity
 import SMCDEL.Internal.TexDisplay
 import SMCDEL.Language
 import SMCDEL.Symbolic.S5

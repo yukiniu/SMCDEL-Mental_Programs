@@ -2,16 +2,12 @@ module SMCDEL.Internal.Help (
   alleq,alleqWith,anydiff,anydiffWith,alldiff,
   groupSortWith,
   apply,(!),set,applyPartial,(!=),
-  powerset,restrict,rtc,tc,Erel,bl,fusion,intersection,seteq,subseteq,lfp
+  powerset,restrict,rtc,tc,Rel,Erel,bl,fusion,intersection,seteq,subseteq,lfp
   ) where
 import Data.List ((\\),foldl',groupBy,sort,sortBy,union,intersect,nub)
 import Data.Containers.ListUtils (nubOrd)
 
--- | A binary relation, represented by a list of tuples.
-type Rel a b = [(a,b)]
-
--- | An equivalence relation given by equivalence classes, as a list of lists.
-type Erel a = [[a]]
+-- * Helper functions for Lists
 
 alleq  :: Eq a => [a] -> Bool
 alleq = alleqWith id
@@ -35,6 +31,28 @@ groupSortWith :: (Eq a, Ord b) => (a -> b) -> [a] -> [[a]]
 groupSortWith f = groupBy (\ x y -> myCompare x y == EQ) . sortBy myCompare where
   myCompare x y = compare (f x) (f y)
 
+powerset :: [a] -> [[a]]
+powerset []     = [[]]
+powerset (x:xs) = map (x:) pxs ++ pxs where pxs = powerset xs
+
+seteq :: Ord a => [a] -> [a] -> Bool
+seteq as bs = sort as == sort bs
+
+subseteq :: Eq a => [a] -> [a] -> Bool
+subseteq xs ys = all (`elem` ys) xs
+
+-- * Fixpoints
+
+lfp :: Eq a => (a -> a) -> a -> a
+lfp f x | x == f x  = x
+        | otherwise = lfp f (f x)
+
+-- * Binary Relations
+
+-- | A binary relation, represented by a list of tuples.
+
+type Rel a b = [(a,b)]
+
 apply :: Show a => Show b => Eq a => Rel a b -> a -> b
 apply rel left = case lookup left rel of
   Nothing -> error ("apply: Relation " ++ show rel ++ " not defined at " ++ show left)
@@ -48,36 +66,33 @@ set []               _ _    = []
 set ((x',oldY):rest) x newY | x' == x   = (x,newY) : rest
                             | otherwise = (x',oldY) : set rest x newY
 
-applyPartial :: Eq a => [(a,a)] -> a -> a
+applyPartial :: Eq a => Rel a a -> a -> a
 applyPartial rel left = case lookup left rel of
   Nothing     -> left
   (Just this) -> this
 
-(!=) :: Eq a => [(a,a)] -> a -> a
+(!=) :: Eq a => Rel a a -> a -> a
 (!=) = applyPartial
-
-powerset :: [a] -> [[a]]
-powerset []     = [[]]
-powerset (x:xs) = map (x:) pxs ++ pxs where pxs = powerset xs
 
 concatRel :: (Ord a, Eq a) => Rel a a -> Rel a a -> Rel a a
 concatRel r s = nubOrd [ (x,z) | (x,y) <- r, (w,z) <- s, y == w ]
 
-lfp :: Eq a => (a -> a) -> a -> a
-lfp f x | x == f x  = x
-        | otherwise = lfp f (f x)
-
 dom :: (Ord a, Eq a) => Rel a a -> [a]
 dom r = nubOrd (foldr (\ (x,y) -> ([x,y]++)) [] r)
-
-restrict :: Ord a => [a] -> Erel a -> Erel a
-restrict domain =  nubOrd . filter (/= []) . map (filter (`elem` domain))
 
 rtc :: (Ord a, Eq a) => Rel a a -> Rel a a
 rtc r = lfp (\ s -> s `union` concatRel r s) [(x,x) | x <- dom r ]
 
 tc :: (Ord a, Eq a) => Rel a a -> Rel a a
 tc r = lfp (\ s -> s `union` concatRel r s) r
+
+-- * Equivalence Relations
+
+-- | An equivalence relation given by equivalence classes, as a list of lists.
+type Erel a = [[a]]
+
+restrict :: Ord a => [a] -> Erel a -> Erel a
+restrict domain =  nubOrd . filter (/= []) . map (filter (`elem` domain))
 
 merge :: Ord a => [a] -> [a] -> [a]
 merge xs [] = xs
@@ -123,9 +138,3 @@ binaryIntersection e f = nub [ sort res | x <- e, y <- f,
 intersection :: Ord a => [a] -> [Erel a] -> Erel a
 intersection u [] = [u]
 intersection _ l = foldr1 binaryIntersection l
-
-seteq :: Ord a => [a] -> [a] -> Bool
-seteq as bs = sort as == sort bs
-
-subseteq :: Eq a => [a] -> [a] -> Bool
-subseteq xs ys = all (`elem` ys) xs

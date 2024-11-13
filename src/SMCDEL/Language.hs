@@ -306,7 +306,7 @@ instance TexAble [Prp] where
   tex ps = "\\{" ++ intercalate "," (map tex ps) ++ "\\}"
 
 instance TexAble Form where
-  tex = removeDoubleSpaces . texForm
+  tex f = " \\ensuremath{ " ++ removeDoubleSpaces (texForm f) ++ " } "
 
 -- * Subformulas and Shrinking
 
@@ -552,11 +552,11 @@ simStep (Dia dynop f)       = Dia dynop (simStep f)
 
 Consider this rather unnatural formula:
 
->>> let testForm = Forall [P 3] $ Equi (Disj [ Bot, PrpF $ P 3, Bot ]) (Conj [ Top , Xor [Top,Kw alice (PrpF (P 4))] , AnnounceW [alice,bob] (PrpF (P 5)) (Kw bob $ PrpF (P 5)) ])
+>>> let testForm = Forall [P 3] $ Equi (Disj [ Bot, PrpF $ P 3, Bot ]) (Conj [ Top , Xor [Top,Kw alice (PrpF (P 4))] , PubAnnounce (PrpF (P 5)) (Kw bob $ PrpF (P 5)) ])
 >>> testForm
-Forall [P 3] (Equi (Disj [Bot,PrpF (P 3),Bot]) (Conj [Top,Xor [Top,Kw "Alice" (PrpF (P 4))],AnnounceW ["Alice","Bob"] (PrpF (P 5)) (Kw "Bob" (PrpF (P 5)))]))
+Forall [P 3] (Equi (Disj [Bot,PrpF (P 3),Bot]) (Conj [Top,Xor [Top,Kw "Alice" (PrpF (P 4))],PubAnnounce (PrpF (P 5)) (Kw "Bob" (PrpF (P 5)))]))
 >>> simplify testForm
-Forall [P 3] (Equi (PrpF (P 3)) (Conj [Xor [Top,Kw "Alice" (PrpF (P 4))],AnnounceW ["Alice","Bob"] (PrpF (P 5)) (Kw "Bob" (PrpF (P 5)))]))
+Forall [P 3] (Equi (PrpF (P 3)) (Conj [Xor [Top,Kw "Alice" (PrpF (P 4))],PubAnnounce (PrpF (P 5)) (Kw "Bob" (PrpF (P 5)))]))
 -}
 
 -- TODO: how to show TeX output in Haddock?

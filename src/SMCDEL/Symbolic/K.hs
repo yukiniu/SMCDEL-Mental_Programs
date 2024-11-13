@@ -5,19 +5,40 @@
 The implementation in "SMCDEL.Symbolic.S5" only works for models where the
 epistemic accessibility relation is an equivalence relation.
 This is because only those can be described by sets of observational variables.
-In fact, not even every S5 relation on distinctly valuated worlds can be modeled with observational variables --- this is why our translation procedure `SMCDEL.Translation.S5` has to add additional atomic propositions.
+In fact, not even every S5 relation on distinctly valuated worlds can be modeled with observational variables --- this is why our translation procedure in "SMCDEL.Translation.S5" has to add additional atomic propositions.
 
 To overcome this limitation, here we generalize the definition of knowledge structures.
 Using well-known methods from temporal model checking, arbitrary relations can also be represented as BDDs.
-See for example~\cite{GoroRyan02:BelRevBDD}.
+See for example [GR2002].
 Remember that in a knowledge structure we can identify states with boolean assignments and those are just sets of propositions.
 Hence a relation on states with unique valuations can be seen as a relation between sets of propositions.
-We can therefore represent it with the BDD of a characteristic function on a double vocabulary, as described in~\cite[Section 5.2]{ClarkeGrumbergPeled1999:MC}.
+We can therefore represent it with the BDD of a characteristic function on a double vocabulary,
+as described in Section 5.2 of [CGP1999].
+
 Intuitively, we construct (the BDD of) a formula which is true exactly for the pairs of boolean assignments that are connected by the relation.
 
 Our symbolic model checker can then also be used for non-S5 models.
 
-For further explanations, see~\cite[Section 8]{BEGS17:SMCDELbeyond}.
+For further explanations, see Sections 2.6 to 2.8 of [MG2018].
+
+References:
+
+- [CGP1999]
+  E.M. Clarke, O. Grumberg and D.A. Peled (1999):
+  /Model Checking/.
+  MIT Press, ISBN 9780262032704.
+
+- [GR2002]
+  Nikos Gorogiannis and Mark D. Ryan (2002):
+  /Implementation of Belief Change Operators Using BDDs/
+  Studia Logica, volume 70, number 1, pages 131-156.
+  <https://doi.org/10.1023/A:1014610426691>
+
+- [MG2018]
+  Malvin Gattinger (2018):
+  /New Directions in Model Checking Dynamic Epistemic Logic./
+  PhD thesis, ILLC, Amsterdam.
+  <https://malv.in/phdthesis>
 
 -}
 
@@ -85,6 +106,7 @@ instance TagBdd Dubbel
 cpBdd :: Bdd -> RelBDD
 cpBdd b = Tagged $ relabelFun (\n -> (2*n) + 1) b
 
+-- | Relabel a BDD to use the unprimed atoms in in the double vocabulary.
 mvBdd :: Bdd -> RelBDD
 mvBdd b = Tagged $ relabelFun (2 *) b
 

@@ -4,12 +4,12 @@
 Here we provide some wrapper functions for epistemic planning via model checking.
 Our main inspiration for this are the following references.
 
-- [LPW 2011]
+- [LPW2011]
   Benedikt Löwe, Eric Pacuit, and Andreas Witzel (2011):
   /DEL Planning and Some Tractable Cases/.
   LORI 2011.
   <https://doi.org/10.1007/978-3-642-24130-7_13>
-- [EBMN 2017]
+- [EBMN2017]
   Thorsten Engesser, Thomas Bolander, Robert Mattmüller, and Bernhard Nebel (2017):
   /Cooperative Epistemic Multi-Agent Planning for Implicit Coordination/.
   Ninth Workshop on Methods for Modalities.
@@ -124,7 +124,7 @@ instance IsPlan (Plan Sym.MultipointedEvent) where
   reaches (IfThenElse check planA planB) goal =
     Conj [ check `Impl` reaches planA goal, Neg check `Impl` reaches planB goal ]
 
--- | The \(((\alpha))\phi := \langle \alpha \rangle \land [\alpha] \phi\) abbreviation from [EBMN 2017].
+-- | The \(((\alpha))\phi := \langle \alpha \rangle \land [\alpha] \phi\) abbreviation from [EBMN2017].
 -- We call it `dix` because it is a combination of /di/amond and bo/x/.
 dix :: DynamicOp -> Form -> Form
 dix op f = Conj [Dia op Top, box op f]
@@ -165,15 +165,14 @@ class Eq o => HasPerspective o where
 -- $
 -- Given a multipointed S5 model \((\M,s)\), the local state of an agent \(i\) is given by
 -- \[ s^i := \{ w \in W \mid \exists v \in s : v \sim_i w \} \]
--- This is the definition given in [EBMN 2017] and implemented by `asSeenBy`.
+-- This is the definition given in [EBMN2017] and implemented by `asSeenBy`.
 
--- | See ...
 instance HasPerspective Exp.MultipointedModelS5 where
   asSeenBy (m@(Exp.KrMS5 _ rel _), actualWorlds) agent = (m, seenWorlds) where
     seenWorlds = sort $ concat $ filter (not . null . intersect actualWorlds) (apply rel agent)
 
 -- | Here we also implement perspective shifts in K.
--- The authors of [EBMN 2017] only consider S5.
+-- The authors of [EBMN2017] only consider S5.
 -- Given a multipointed Kripke model $(\M,s)$, let the local state of $i$ be:
 -- \[ s^i := \{ w \in W \mid \exists v \in s : v R_i w \} \]
 -- Intuitively, these are all worlds the agent considers possible if the current state is $s$.
@@ -247,7 +246,7 @@ instance HasPerspective SymK.MultipointedBelScene where
 
 -- * Implicit Cooperation
 
--- $ We now introduce owner functions as discussed in [EBMN 2017] and based on [LPW 2011]
+-- $ We now introduce owner functions as discussed in [EBMN2017] and based on [LPW2011].
 
 data CoopTask state action = CoopTask state [Owned action] Form
   deriving (Eq,Ord,Show)
@@ -258,7 +257,7 @@ instance (HasPerspective state, Eq action) => HasPerspective (CoopTask state act
 
 -- ** Implicitly coordinated sequential plans
 
--- $ As done in section 3.2 of [EBMN 2017].
+-- $ As done in section 3.2 of [EBMN2017].
 
 -- | Helper type to label actions with strings.
 type Labelled a = (String,a)
