@@ -1,19 +1,22 @@
 {-# LANGUAGE FlexibleInstances, UndecidableInstances, MultiParamTypeClasses, AllowAmbiguousTypes, OverloadedStrings, BangPatterns #-}
 
 module SMCDEL.Internal.TexDisplay where
-import Control.Monad
-import Data.List
+
 import Control.Concurrent (threadDelay)
+import Control.Monad
+import Data.GraphViz
+import Data.GraphViz.Types.Generalised
+import Data.GraphViz.Types.Monadic
+import Data.List
 import qualified Data.Text.Lazy as T
-import System.Directory (findExecutable)
+import Data.Time.Clock (getCurrentTime, diffUTCTime)
+import Language.Haskell.TH
+import System.Directory (findExecutable, doesFileExist, getModificationTime)
+import System.Exit
 import System.IO (hGetContents)
 import System.IO.Temp
 import System.IO.Unsafe (unsafePerformIO)
 import System.Process
-import Data.GraphViz
-import Data.GraphViz.Types.Generalised
-import Data.GraphViz.Types.Monadic
-import Data.Time.Clock.POSIX
 
 begintab, endtab, newline :: String
 begintab  = "\\\\begin{tabular}{c}"
@@ -36,6 +39,7 @@ class TexAble a where
                    , "\\usepackage[utf8]{inputenc}"
                    , "\\usepackage{tikz,fontenc,graphicx}"
                    , "\\usepackage[pdftex]{hyperref}"
+                   , "\\usepackage{amssymb,amsmath,adjustbox}"
                    , "\\hypersetup{pdfborder={0 0 0},breaklinks=true}"
                    , "\\begin{document}"
                    ]
@@ -46,17 +50,15 @@ class TexAble a where
     runAndWait $ "cd " ++ filename ++ "/../; /usr/bin/pdflatex -interaction=nonstopmode "++filename++".tex"
   disp :: a -> IO ()
   disp !x = withSystemTempDirectory "smcdel" $ \tmpdir -> do
-    ts <- round <$> getPOSIXTime
-    let filename = tmpdir ++ "/disp-" ++ show (ts :: Int)
+    let filename = tmpdir ++ "/disp"
     pdfTo x filename
     runIgnoreAndWait $ "open " ++ filename ++ ".pdf"
     threadDelay 5000000 -- give viewer five seconds before deleting tmpdir
   svgViaTex :: a -> String
   svgViaTex !x = unsafePerformIO $ withSystemTempDirectory "smcdel" $ \tmpdir -> do
-    ts <- round <$> getPOSIXTime
-    let filename = tmpdir ++ "/svgViaTex-" ++ show (ts :: Int)
+    let filename = tmpdir ++ "/svgViaTex"
     pdfTo x filename
-    runAndWait $ "pdftocairo -nocrop -svg "++filename++".pdf "++filename++".svg"
+    runAndWait $ "pdftocairo -nocrop -svg " ++ filename ++ ".pdf " ++ filename ++ ".svg"
     readFile (filename ++ ".svg")
 
 instance TexAble String where
@@ -74,9 +76,10 @@ instance TexAble a => TexAble [(a,Bool)] where
 runAndWait :: String -> IO ()
 runAndWait command = do
   (_inp,_out,err,pid) <- runInteractiveCommand command
-  _ <- waitForProcess pid
-  hGetContents err >>= (\x -> unless (null x) (putStrLn x))
-  return ()
+  exCode <- waitForProcess pid
+  when (exCode /= ExitSuccess) $ do
+    hGetContents err >>= (\x -> unless (null x) (putStrLn "STDERR:\n" >> putStrLn x))
+    hGetContents _out >>= (\x -> unless (null x) (putStrLn "STDOUT:\n" >> putStrLn x))
 
 runIgnoreAndWait :: String -> IO ()
 runIgnoreAndWait command = do
@@ -142,3 +145,31 @@ instance (Ord a, Show a, KripkeLike a) => TexAble (ViaDot a) where
   texDocumentTo (ViaDot x) filename = do
     _ <- runGraphviz (toGraph x) DotOutput (filename ++ ".dot")
     dot2tex $ dot2texDefaultArgs ++ filename ++ ".dot -o " ++ filename ++ ".tex;"
+
+-- | Save the SVG of something into the current folder.
+makeSvg :: TexAble a => String -> a -> IO ()
+makeSvg name x = let f = ("./" ++ name ++ ".svg")
+                 in writeFile f (svgViaTex x) >> putStrLn f
+
+-- | Save the SVG of something into the current folder - if it does not exist yet or is older than one hour.
+refreshSvg :: TexAble a => String -> a -> IO ()
+refreshSvg name x = do
+  let f = "./" ++ name ++ ".svg"
+  exists <- doesFileExist f
+  todo <- if not exists then return True else do
+    modTime <- getModificationTime f
+    currentTime <- getCurrentTime
+    return $ diffUTCTime currentTime modTime > 3600
+  if todo then makeSvg name x else putStrLn (f ++ "already exists")
+
+-- | Use Template Haskell to add markdown that shows the SVG from the @docs@ folder.
+addSvg :: Name -> Q [Dec]
+addSvg name = do
+  oldDoc <- getDoc (DeclDoc name)
+  let n = nameBase name
+  let markdown = "\n\n![svgViaTex "++ n ++ "](docs/" ++ n ++ ".svg)\n"
+  let newDoc = case oldDoc of
+        Nothing -> markdown
+        Just old -> old ++ markdown
+  putDoc (DeclDoc name) newDoc
+  return []

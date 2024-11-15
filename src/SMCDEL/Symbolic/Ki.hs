@@ -355,7 +355,7 @@ reduce e@(t@(Trf addprops _ _ (ags, eventObs)), x) (Dk agents f) =
        y <- powerset addprops,
       tagBddEval (mv (M.size ags) x ++ cp (M.size ags) y) omegai]
 reduce e (Dkw ags f)     = reduce e (Disj [Dk ags f, Dk ags (Neg f)])
-reduce e (G f)           = G <$> reduce e f
+reduce _ (G _)           = Nothing
 reduce _ PubAnnounce  {} = Nothing
 reduce _ Dia          {} = Nothing
 

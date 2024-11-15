@@ -1,4 +1,7 @@
--- | Cheryl's Age in DEMO-S5
+{- | Cheryl's Age in DEMO-S5
+
+See also "SMCDEL.Examples.CherylDemo" and "SMCDEL.Explicit.DEMO_S5".
+-}
 
 module SMCDEL.Examples.CherylDemo where
 

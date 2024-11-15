@@ -2,7 +2,16 @@
 
 {- | In this module we define a symbolic represenation of Kripke models, called knoweldge structures.
 To represent Boolean functions we use the CacBDD library via the Haskell bindings HasCacBDD.
-An alternative to this module here is `SMCDEL.Symbolic.S5_CUDD` which uses CUDD instead of CacBDD.
+
+Alternatives to this module here that use other BDD packages are "SMCDEL.Symbolic.S5_DD" and "SMCDEL.Symbolic.S5_CUDD".
+
+The main reference is:
+
+- [MG2018]
+  Malvin Gattinger (2018):
+  /New Directions in Model Checking Dynamic Epistemic Logic./
+  PhD thesis, ILLC, Amsterdam.
+  <https://malv.in/phdthesis>
 -}
 
 module SMCDEL.Symbolic.S5 where
@@ -69,20 +78,20 @@ Formal proofs that knowledge structures are indeed equivalent to S5 Kripke model
 
 -- | A /knowledge structure/ is a tuple \(\mathcal{F} = (V,\theta,O_1,\dots,O_n)\) where
 -- \(V\) is the /vocabulary/, a finite set of propositional variables,
--- \(\theta\) is the /state law/, a Boolean formula over $V$ (represented as its BDD) and
+-- \(\theta\) is the /state law/, a Boolean formula over \(V\) (represented as its BDD) and
 -- for each agent \(i\), we have /observational variables/ \(O_i \subseteq V\).
-data KnowStruct = KnS [Prp]            -- vocabulary
-                      Bdd              -- state law
-                      [(Agent,[Prp])]  -- observational variables
+data KnowStruct = KnS [Prp]            -- ^ vocabulary
+                      Bdd              -- ^ state law
+                      [(Agent,[Prp])]  -- ^ observational variables
                     deriving (Eq,Show)
 
--- | A /state/ of \(\mathcal{F}\) is a list of true atomic propositions.
--- It should satisfy \(\theta\).
+-- | A /state/ is a list of true atomic propositions.
+-- The states of \(\mathcal{F}\) are those that satisfy \(\theta\).
 type State = [Prp]
 
 instance Pointed KnowStruct State
 
--- | A pair $(\mathcal{F},s)$ where $s$ is a state of $\mathcal{F}$, is a /scene/.
+-- | A pair \((\mathcal{F},s)\) where \(s\) is a state of \(\mathcal{F}\), is a /scene/.
 type KnowScene = (KnowStruct,State)
 
 instance Pointed KnowStruct Bdd
@@ -106,40 +115,12 @@ numberOfStates (KnS props lawbdd _) = satCountWith (map fromEnum props) lawbdd
 
 -- * Semantics
 
-{- $
-Semantics on `KnowScene`s are defined inductively as follows.
-
-- \( (\mathcal{F},s)\vDash p\) iff \(s \vDash p\)
-- \( (\mathcal{F},s)\vDash \neg \varphi\) iff not \((\mathcal{F},s)\vDash \varphi\)
-- \( (\mathcal{F},s)\vDash \varphi \land \psi\) iff \((\mathcal{F},s)\vDash \varphi\) and \((\mathcal{F},s)\vDash \psi\)
-- \( (\mathcal{F},s)\vDash { K}_i \varphi\) iff
-    for all \(t\) of \(\mathcal{F}\), if \(s\cap O_i=t\cap O_i\), then \((\mathcal{F},t)\vDash \varphi\)
-- \((\mathcal{F},s)\vDash {C}_\Delta \varphi\) iff
-    for all \(t\) of \(\mathcal{F}\), if \((s,t)\in {\cal E}_\Delta^\ast\), then \(({\cal F},t)\vDash \varphi\)
-- \((\mathcal{F},s)\vDash [\psi] \varphi\) iff \((\mathcal{F},s)\vDash \psi\) implies \((\mathcal{F}^\psi, s) \vDash \varphi\)
-    where
-      \(\| \psi \|_\mathcal{F}\) is given by `bddOf`
-      and \[\mathcal{F}^\psi:=(V,\theta \land \| \psi \|_\mathcal{F}, O_1, \dots, O_n)\]
-- \((\mathcal{F},s)\vDash [\psi]_\Delta \varphi\) iff
-    \((\mathcal{F},s)\vDash \psi\) implies \((\mathcal{F}^\Delta_\psi, s\cup \{ p_\psi \} ) \vDash \varphi\)
-    where
-      \(p_\psi\) is a new propositional variable,
-      \(\| \psi \|_\mathcal{F}\) is a boolean formula given by Definition~\ref{def-boolEquiv}
-      and \[\mathcal{F}^\Delta_\psi:= (V\cup \{ p_\psi \},\theta \land (p_\psi \leftrightarrow \| \psi \|_\mathcal{F}), O^\ast_1, \dots, O^\ast_n) \]
-      where
-        \(O^\ast_i := \left\{ \begin{array}{ll}
-          O_i \cup \{ p_\psi \} & \text{if } i \in \Delta \\
-          O_i & \text{otherwise}
-        \end{array} \right. \)
-
-If we have \(({\cal F},s) \vDash \phi\) for all states \(s\) of \(\cal F\), then we say that \(\phi\) is valid on \(\cal F\) and write \(\cal F \vDash \phi\).
--}
-
--- | The function `eval` implements the semantics.
--- An important warning: This function is not a symbolic algorithm!
--- It is a direct translation of the Definition above.
--- In particular it calls `statesOf` which means that the set of stats is explicitly generated.
--- The symbolic (and much faster) counterpart of `eval` is `evalViaBdd` below.
+-- | Evaluate a formula on a scene following the inductively defined semantics.
+-- Warning: This function is __not__ the efficent symbolic model checking algorithm!
+-- Almost always you should use the faster `evalViaBdd` instead.
+--
+-- The function here is a direct translation of Definition 2.23 in [MG 2018].
+-- In particular it calls `statesOf` which means that the set of all states is explicitly generated.
 eval :: KnowScene -> Form -> Bool
 eval _       Top           = True
 eval _       Bot           = False
@@ -201,15 +182,18 @@ shareknow kns sets = filter rel [ (s,t) | s <- statesOf kns, t <- statesOf kns ]
 comknow :: KnowStruct -> [Agent] -> [(State,State)]
 comknow kns@(KnS _ _ obs) ags = rtc $ shareknow kns (map (apply obs) ags)
 
--- ** Announcements
-
-{- $
-We also have to define how knowledge structures are changed by public and group announcements.
-The following functions correspond to the last two points of the semantics Definition above.
--}
-
 -- * Symbolic Evaluation
 
+-- | Given a knowledge structure \(\mathcal{F}\) and a formula \(\phi\),
+-- generate a BDD that on \(\mathcal{F}\) is equivalent to \(\phi\).
+-- This is the key idea for symbolic model checking and implements Definition 2.2.6 in [MG 2018].
+--
+-- The last case also extends our boolean translation to dynamic operators with knowledge transformers.
+-- In two subcases we deal with pointed events like \( (\mathcal{X},x) \)$
+-- and multipointed events like \( (\mathcal{X},\sigma) \).
+-- For pointed events, an explanation of the chain of substitutions can be found on page 74 of [MG 2018].
+-- The multipointed case only differs in step 3 where instead of a single event \( x \subseteq V^+ \)
+-- a set of events described by \( \sigma \in \mathcal{L}_B(V^+) \) is simulated.
 bddOf :: KnowStruct -> Form -> Bdd
 bddOf _   Top           = top
 bddOf _   Bot           = bot
@@ -272,6 +256,10 @@ bddOf kns (Dia (Dyn dynLabel d) f) =
               ) where actualsBdd = relabelWith shiftrel xsBdd
           Nothing -> error $ "cannot update knowledge structure with '" ++ dynLabel ++ "':\n " ++ show d
 
+-- | Evaluate a formula on a scene byt first computing its BDD.
+-- This is the function to use for symbolic model checking.
+-- It has the same type as `eval` and is equivalent to it, but faster.
+-- For the equivalence proof, see Theorem 2.2.8 in [MG 2018].
 evalViaBdd :: KnowScene -> Form -> Bool
 evalViaBdd (kns,s) f = evaluateFun (bddOf kns f) (\n -> P n `elem` s)
 
@@ -294,17 +282,23 @@ instance Update KnowStruct Form where
 instance Update KnowScene Form where
   unsafeUpdate (kns,s) psi = (unsafeUpdate kns psi,s)
 
+-- | Check whether a formula is /valid/ on a knowledge structure.
+-- Works by checking if the BDD of the formula is implied by the state law.
 validViaBdd :: KnowStruct -> Form -> Bool
 validViaBdd kns@(KnS _ lawbdd _) f = top == lawbdd `imp` bddOf kns f
 
+-- | Given a knowledge structure, generate the list of states /where/ a given formula is true.
+-- Works by computing the BDD of the formula and then generating all satisfying assignments.
 whereViaBdd :: KnowStruct -> Form -> [State]
 whereViaBdd kns@(KnS props lawbdd _) f =
  map (sort . map (toEnum . fst) . filter snd) $
    allSatsWith (map fromEnum props) $ con lawbdd (bddOf kns f)
 
 -- * Minimization and Optimization
-
--- | Knowledge structures can contain unnecessary vocabulary, i.e. atomic propositions that are determined by the state law and not used as observational propositions.
+--
+-- Knowledge structures can contain unnecessary vocabulary,
+-- i.e. atomic propositions that are determined by the state law and not used as observational propositions.
+-- Here we provide functions to remove those.
 
 determinedVocabOf :: KnowStruct -> [Prp]
 determinedVocabOf strct =
@@ -339,6 +333,7 @@ withoutProps propsToDel (KnS oldProps oldLawBdd oldObs) =
     [(i,os \\ propsToDel) | (i,os) <- oldObs]
 
 instance Optimizable KnowStruct where
+  -- | Optimize a knowledge structure using all the helper functions together, given a main vocabulary that we want to keep.
   optimize myVocab oldKns = newKns where
     intermediateKns = withoutProps (determinedVocabOf oldKns \\ myVocab) oldKns
     newKns = fst $ replaceEquivExtra myVocab intermediateKns
@@ -359,22 +354,32 @@ instance Optimizable MultipointedKnowScene where
     (newKns,replRel) = replaceEquivExtra myVocab intermediateKns
     newStatesBdd = foldr (uncurry Data.HasCacBDD.substit) intermediateStatesBdd [ (fromEnum p, var (fromEnum q)) | (p,q) <-replRel ]
 
+-- | The equivalent of a generated submodel on symbolic structures.
+-- Note: this is not always an optmization.
+-- For further discussion, see Section 2.12 in [MG 2018].
+-- Still, there are cases where generated substructures are useful, hence we implement them.
+-- In paritcular in combination with the other optimizations above, smaller structures can be obtained.
 generatedSubstructure :: MultipointedKnowScene -> MultipointedKnowScene
 generatedSubstructure kns@(KnS props oldLaw obs, curBdd) = (KnS props newLaw obs, curBdd) where
   extend this = disSet (this : [ existsSet (map fromEnum $ props \\ obs ! i) this | i <- agentsOf kns ])
   reachable = lfp extend curBdd
   newLaw = oldLaw `con` reachable
 
--- * Symbolic Bisimulations f
---
--- | See Section 2.11 from https://malv.in/phdthesis for details.
 
--- | To distinguish explicit and symbolic bisimulations in the implementation we call symbolic bisimulations /propulations/.
+-- TODO use generatedSubstructure if it helps in optimize! (fixpoint needed?)
+
+-- * Symbolic Bisimulations
+--
+-- See Section 2.11 of [MG 2018] for details.
+
+-- | A symbolic bisimulation is also called /propulations/.
+-- It is given by a BDD using the quadruple vocabulary \(V \cup V' \cup V'' \cup V'''\).
 type Propulation = Tagged Quadrupel Bdd
 
 ($$) :: Monad m => ([a] -> b) -> [m a] -> m b
 ($$) f xs = f <$> sequence xs
 
+-- | Check whether a Propulation is indeed correct, i.e. a symbolic bisimulation.
 checkPropu :: Propulation -> KnowStruct -> KnowStruct -> [Prp] -> Bool
 checkPropu propu kns1@(KnS _ law1 obs1) kns2@(KnS _ law2 obs2) voc =
   pure top == (imp <$> lhs <*> rhs) where
@@ -389,15 +394,51 @@ checkPropu propu kns1@(KnS _ law1 obs1) kns2@(KnS _ law2 obs2) voc =
                       | i <- agentsOf kns2 ]
     nonObs i obs = map (\(P n) -> n) $ voc \\ obs ! i
 
+-- TODO Bisimulation <-> Propulation
+
 -- * Knowledge Transformers
+--
+-- $
+--
+-- Dynamic Epistemic Logic (DEL) is more than just public announcements.
+-- Also the symbolic model checking method can be extended to cover other kinds of events.
+-- What action models are to Kripke models, the following knowledge transformers are to knowledge structures.
+-- The analog of product update is knowledge transformation.
+--
+-- A /knowledge transformer/ for a given vocabulary \(V\) and set of agents \(I=\{1,\dots,n\}\) is a tuple
+--   \(\mathcal{X} = (V^+, \theta^+, O_1, \dots, O_n)\)
+-- where
+--   \(V^+\) is a set of atomic propositions such that \(V \cap V^+ = \varnothing\),
+--   \(\theta^+\) is a possibly epistemic formula from \(\mathcal{L}(V \cup V^+)\)
+--   and \(O_i \subseteq V^+\) for all agents \(i\).
+-- An /event/ is a knowledge transformer together with a subset \(x \subseteq V^+\), written as \((\mathcal{X},x)\).
+--
+-- The /knowledge transformation/ of a knowledge structure \(\mathcal{F}=(V,\theta,O_1,\dots,O_n)\)
+-- with a knowledge transformer \(\mathcal{X} = (V^+, \theta^+, O_1^+, \dots, O_n^+)\) for \(V\) is defined by:
+--   \[ \mathcal{F} \times \mathcal{X}
+--      := (V\cup V^+,\theta \land ||\theta^+||_\mathcal{F}, O_1 \cup O_1^+, \dots, O_n \cup O_n^+) \]
+-- Given a scene \((\mathcal{F},s)\) and an event \((\mathcal{X},x)\) we define
+-- \((\mathcal{F},s) \times (\mathcal{X},x) := (\mathcal{F} \times \mathcal{X},s\cup x)\).
+--
+-- As a simplest example, the public announcement of \(\varphi\) is the event
+--   \(((\varnothing,\varphi,\varnothing,\dots,\varnothing), \varnothing)\).
+--
+-- The semi-private announcement of \(\varphi\) to a group of agents
+-- \(\Delta\) is given by
+--   \) ( (\{p_\varphi\},p_\varphi\leftrightarrow\varphi,O_1^+,\dots,O_n^+), \{p_\varphi\} ) \)
+-- where \(O_i^+ = \{p_\varphi\}\) if \(i\in\Delta\) and \(O_i^+=\varnothing\) otherwise.
+--
+-- In the implementation we can see that the elements of @addprops@ are shifted to a large enough index so that they become disjoint with @props@.
+
 
 data KnowTransformer = KnTrf
-  [Prp]            -- addProps
-  Form             -- addLaw
-  [(Prp,Bdd)]      -- changeLaw
-  [(Agent,[Prp])]  -- addObs
+  [Prp]            -- ^ event vocabulary
+  Form             -- ^ event law
+  [(Prp,Bdd)]      -- ^ change law
+  [(Agent,[Prp])]  -- ^ event observables
   deriving (Eq,Show)
 
+-- | Short-hand to define knowledge transformers without factual change.
 noChange :: ([Prp] -> Form -> [(Prp,Bdd)] -> [(Agent,[Prp])] -> KnowTransformer)
           -> [Prp] -> Form                -> [(Agent,[Prp])] -> KnowTransformer
 noChange kntrf addprops addlaw = kntrf addprops addlaw []
@@ -432,6 +473,7 @@ shiftPrepare (KnS props _ _) (KnTrf addprops addlaw changelaw eventObs) =
     changelawShifted = map (second (relabelWith shiftrel)) changelaw
     eventObsShifted  = map (second (map (apply shiftrel))) eventObs
 
+-- | S5 transformation with factual change.
 instance Update KnowScene Event where
   unsafeUpdate (kns@(KnS props _ _),s) (ctrf, eventFactsUnshifted) = (KnS newprops newlaw newobs, news) where
     -- PART 1: SHIFTING addprops to ensure props and newprops are disjoint
@@ -449,6 +491,7 @@ instance Update KnowScene Event where
             , eventFacts
             , filter (\ p -> bddEval (s ++ eventFacts) (changelaw ! p)) changeprops ]
 
+-- | Pointless update of a structure with a transformer. Uses laziness.
 instance Update KnowStruct KnowTransformer where
   checks = [haveSameAgents]
   unsafeUpdate kns ctrf = KnS newprops newlaw newobs where
@@ -470,7 +513,17 @@ instance Update MultipointedKnowScene MultipointedEvent where
       newobs = [ (i , sort $ map (applyPartial copyrel) (obs ! i) ++ eventObs ! i) | i <- map fst obs ]
       newStatesBDD = conSet [ relabelWith copyrel statesBdd, eventsBdd ]
 
--- * /LaTeX/ functions
+-- Note that in the last line we do not say anything about the `changeprops`.
+-- This works because new actual states are given by the conjunction of the `newlaw` and `newstatesBDD`.
+-- Hence the new state law will determine the values of the (un)changed variables in the new actual states.
+
+-- TODO instance Update KnowScene MultipointedEvent
+
+-- * LaTeX functions
+-- $
+-- We provide helper functions to generate \LaTeX\ code that shows
+-- a given knowledge structure, including a BDD of the state law.
+-- See "SMCDEL.Examples" for examples of what the output looks like.
 
 texBddWith :: (Int -> String) -> Bdd -> String
 texBddWith myShow b = unsafePerformIO $ do
@@ -494,38 +547,38 @@ instance TexAble WrapBdd where
 
 instance TexAble KnowStruct where
   tex (KnS props lawbdd obs) = concat
-    [ " \\left( \n"
-    , tex props ++ ", "
-    , " \\begin{array}{l} \\scalebox{0.4}{"
+    [ " \\ensuremath{ \\left( \n"
+    , " V = " ++ tex props ++ ", "
+    , " \\theta = \\begin{array}{l} \\scalebox{0.4}{"
     , texBDD lawbdd
     , "} \\end{array}\n "
     , ", \\begin{array}{l}\n"
-    , intercalate " \\\\\n " (map (\(_,os) -> tex os) obs)
+    , intercalate " \\\\\n " (map (\(i,os) -> " O_{\\text{" ++ i ++ "}} = " ++ tex os) obs)
     , "\\end{array}\n"
-    , " \\right)" ]
+    , " \\right) } " ]
 
 instance TexAble KnowScene where
-  tex (kns, state) = tex kns ++ " , " ++ tex state
+  tex (kns, state) = " \\ensuremath{ " ++ tex kns ++ " , " ++ tex state ++ " } "
 
 instance TexAble MultipointedKnowScene where
   tex (kns, statesBdd) = concat
-    [ " \\left( \n"
+    [ " \\ensuremath{ \\left( \n"
     , tex kns ++ ", "
     , " \\begin{array}{l} \\scalebox{0.4}{"
     , texBDD statesBdd
     , "} \\end{array}\n "
-    , " \\right)" ]
+    , " \\right) } " ]
 
 instance TexAble KnowTransformer where
   tex (KnTrf addprops addlaw changelaw eventObs) = concat
-    [ " \\left( \n"
-    , tex addprops, ", \\ "
-    , tex addlaw, ", \\ "
+    [ " \\ensuremath{ \\left( \n"
+    , " V^+ = ", tex addprops, ", \\ "
+    , " \\theta^+ = ", tex addlaw, ", \\ "
     , intercalate ", " $ map texChange changelaw
     , ", \\ \\begin{array}{l}\n"
-    , intercalate " \\\\\n " (map (\(_,os) -> tex os) eventObs)
+    , intercalate " \\\\\n " (map (\(i,os) -> " O_{\\text{" ++ i ++ "}}^+ = " ++ tex os) eventObs)
     , "\\end{array}\n"
-    , " \\right) \n"
+    , " \\right) } \n"
     ] where
         texChange (prop,changebdd) = concat
           [ tex prop ++ " := "
@@ -535,34 +588,29 @@ instance TexAble KnowTransformer where
 
 instance TexAble Event where
   tex (trf, eventFacts) = concat
-    [ " \\left( \n", tex trf, ", \\ ", tex eventFacts, " \\right) \n" ]
+    [ " \\ensuremath{ \\left( \n", tex trf, ", \\ ", tex eventFacts, " \\right) } " ]
 
 instance TexAble MultipointedEvent where
   tex (trf, eventsBdd) = concat
-    [ " \\left( \n"
+    [ " \\ensuremath{ \\left( \n"
     , tex trf ++ ", \\ "
     , " \\begin{array}{l} \\scalebox{0.4}{"
     , texBDD eventsBdd
     , "} \\end{array}\n "
-    , " \\right)" ]
-
+    , " \\right) } " ]
 
 -- * Reduction axioms for knowledge transformers
 
-{- |
-Adding knowledge transformers does not increase expressivity because we have
-the following reductions.
-
-For now we do not implement a separate type of formulas with dynamic operators
-but instead implement the reduction axioms directly as a function which takes
-an event and ``pushes it through'' a formula.
-
-The following takes an event $\mathcal{X},x$ and a formula $\phi$ and then
-``pushes'' $[\mathcal{X},x]$ through all boolean and epistemic operators in
-$\phi$ until it disappears in front of atomic propositons.
-This translation is global, i.e.\ if there is a reduced formula, then it is
-equivalent to the original on all structures.
+{-$
+Adding knowledge transformers does not increase expressivity because we have the following reductions.
 -}
+
+-- | Given an event \(\mathcal{X},x\) and a formula \(\phi\), compute a formula equivalent to \([\mathcal{X},x]\phi\).
+-- Note that here we do not use formulas with dynamic operators but the function takes the transformer and formula separately.
+-- See Fact 2.10.3 in [MG 2018] for the reduction axioms.
+-- The main idea is to "push" the dynamic modality through all boolean and epistemic operators until it disappears in front
+-- of atomic propositons.
+-- This is global, i.e.\ if there is a result, then it is equivalent to the dynamic-box formula on all structures.
 reduce :: Event -> Form -> Maybe Form
 reduce _ Top          = Just Top
 reduce e Bot          = pure $ Neg (preOf e)
@@ -590,13 +638,13 @@ reduce event@(trf@(KnTrf addprops _ _ obs), x) (Dk ags f) =
        [obs ! i | i <- ags]
     ]
 reduce e (Dkw ags f)     = reduce e (Disj [Dk ags f, Dk ags (Neg f)])
-reduce e (G f)           = G <$> reduce e f
+reduce _ (G _)           = Nothing
 reduce _ PubAnnounce  {} = Nothing
 reduce _ Dia          {} = Nothing
 
 -- * Random Knowledge Structures
 
--- | Generating random knowledge structures for QuickCheck. -- FIXME: not showing up in Haddock?
+-- | Random knowledge structures with `defaultVocabulary` and `defaultAgents`.
 instance Arbitrary KnowStruct where
   arbitrary = do
     numExtraVars <- choose (0,2)
@@ -616,7 +664,11 @@ pubAnnounceTrf :: [Agent] -> Form -> Event
 pubAnnounceTrf agents f = (noChange KnTrf [] f myobs, []) where
   myobs = [ (i,[]) | i <- agents ]
 
--- | Semi-private group announcement as an action model.
+-- | Semi-private group announcement as a transformer.
+-- The announcement of \(\varphi\) to a group of agents
+-- \(\Delta\) is given by
+--   \) ( (\{p_\varphi\},p_\varphi\leftrightarrow\varphi,O_1^+,\dots,O_n^+), \{p_\varphi\} ) \)
+-- where \(O_i^+ = \{p_\varphi\}\) if \(i\in\Delta\) and \(O_i^+=\varnothing\) otherwise.
 groupAnnounceTrf :: [Agent] -> [Agent] -> Form -> Event
 groupAnnounceTrf everyone listeners f = (noChange KnTrf [fresh] (PrpF fresh `Equi` f) myobs, [fresh]) where
   fresh = freshp $ propsInForm f

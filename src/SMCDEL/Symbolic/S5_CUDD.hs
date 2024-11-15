@@ -1,5 +1,20 @@
 {-# LANGUAGE DerivingStrategies, FlexibleContexts, FlexibleInstances, MultiParamTypeClasses, PolyKinds, ScopedTypeVariables #-}
 
+{- |
+
+This module is an alternative to "SMCDEL.Symbolic.S5" using \emph{CUDD} from:
+
+- Fabio Somenzi (2012):
+  /CUDD: CU Decision Diagram Package/.
+  Release 2.5.0.
+
+CUDD is probably the best-known BDD library and is used in many other model
+checkers, including MCMAS
+
+-}
+
+-- TODO: add references ~\cite{LomQuRai2015:mcmas}, MCK~\cite{GamMey2004:MCK} and NuSMV~\cite{Cimatti2002:NuSMV}.
+
 module SMCDEL.Symbolic.S5_CUDD where
 
 import Cudd.Cudd (DdManager)
@@ -20,6 +35,9 @@ import SMCDEL.Internal.MyHaskCUDD
 import SMCDEL.Internal.TexDisplay
 import SMCDEL.Language
 
+-- * Boolean DDs
+
+-- | Translate the boolean part of our language to functions of the BDD package.
 boolDdOf :: (DdCtx a b c) => Cudd.Cudd.DdManager -> Form -> Dd a b c
 boolDdOf mgr Top           = top mgr
 boolDdOf mgr Bot           = bot mgr
@@ -35,6 +53,8 @@ boolDdOf mgr (Forall ps f) = boolDdOf mgr (foldl singleForall f ps) where
 boolDdOf mgr (Exists ps f) = boolDdOf mgr (foldl singleExists f ps) where
   singleExists g p = Disj [ substit p Top g, substit p Bot g ]
 boolDdOf _   f             = error $ "boolDdOf failed: Not a boolean formula:" ++ show f
+
+-- * Knowledge Structures with CUDD
 
 -- | Knowledge structures using a BDD or ZDD variant.
 data KnowStruct a b c =
@@ -103,7 +123,10 @@ evalAssDD mgr (dd :: Dd a b c) f = bool where
 ddEval :: (DdCtx a b c) => Cudd.Cudd.DdManager -> [Prp] -> Dd a b c -> Bool
 ddEval mgr truths querybdd = evalAssDD mgr querybdd (\n -> P n `elem` truths)
 
---Somewhat fast statesOf, faster woud be to use primitive construction of all Satifying Assignments (e.i. explicitly looping through the dd instead of using restrict).
+-- | Get all states of a structure.
+-- This can be quite slow due to its naive implementation.
+-- Faster woud be to directly construct all satifying assignments
+-- by explicitly looping through the DD instead of using `restrict`.
 statesOf :: DdCtx a b c => KnowStruct a b c -> [KnState]
 statesOf (KnS mgr allprops lawdd _) = loop allprops lawdd where
   loop [] _ = []
@@ -227,8 +250,8 @@ renameNode dn myShow = case lookup (DotGen.nodeID dn) myShow of
   (Just v) -> dn { nodeID = v } --nodeID is in myShow, thus replace the Int with the proposition
   Nothing -> dn --otherwise do nothing
 
+-- | Replace also the node name occurences in the edge statements.
 renameEdge :: DotGen.DotEdge String -> [(String, String)] -> DotGen.DotEdge String
--- replace also the node name occurences in the edge statements
 renameEdge de myShow = changeFromNode (changeToNode de) where
   changeToNode edge = case lookup (DotGen.toNode edge) myShow of
     (Just v) -> edge {toNode = v }

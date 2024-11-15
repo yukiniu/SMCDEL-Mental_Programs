@@ -1,5 +1,8 @@
--- Note: This is a modified version of DEMO-S5 by Jan van Eijck.
--- For the original, see http://homepages.cwi.nl/~jve/software/demo_s5/
+{- | This module is a modified version of DEMO-S5 by Jan van Eijck.
+
+For the original, see <https://homepages.cwi.nl/~jve/software/demo_s5/>
+-}
+
 module SMCDEL.Explicit.DEMO_S5 where
 
 import Control.Arrow (first,second)
@@ -7,9 +10,12 @@ import Data.List (sortBy)
 
 import SMCDEL.Internal.Help (apply,restrict,Erel,bl)
 
+-- * Agents, Propositions and Models
+
 newtype Agent = Ag Int deriving (Eq,Ord,Show)
 
 data DemoPrp = DemoP Int | DemoQ Int | DemoR Int | DemoS Int deriving (Eq,Ord)
+
 instance Show DemoPrp where
   show (DemoP 0) = "p"; show (DemoP i) = "p" ++ show i
   show (DemoQ 0) = "q"; show (DemoQ i) = "q" ++ show i
@@ -71,6 +77,8 @@ data DemoForm a = Top
 impl :: DemoForm a -> DemoForm a -> DemoForm a
 impl form1 form2 = Disj [Ng form1, form2]
 
+-- * Semantics
+
 -- | semantics: truth at a world in a model
 isTrueAt :: (Show state, Ord state) => EpistM state -> state -> DemoForm state -> Bool
 isTrueAt _ _ Top = True
@@ -130,10 +138,13 @@ updPi f (Mo states agents val rels actual) =
   (map (second (map (map f))) rels)
   (map f actual)
 
+-- * Muddy Children Example
+
 bTables :: Int -> [[Bool]]
 bTables 0 = [[]]
 bTables n = map (True:) (bTables (n-1)) ++ map (False:) (bTables (n-1))
 
+-- | Initial model for the given number of muddy children.
 initN :: Int -> EpistM [Bool]
 initN n = Mo states agents [] rels points where
   states = bTables n
@@ -143,6 +154,7 @@ initN n = Mo states agents [] rels points where
                    tab2 <- bTables (n-i) ]) | i <- [1..n] ]
   points = [False: replicate (n-1) True]
 
+-- | Not everyone is muddy.
 fatherN :: Int -> DemoForm [Bool]
 fatherN n = Ng (Info (replicate n False))
 

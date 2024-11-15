@@ -1,10 +1,22 @@
 {-# LANGUAGE TupleSections #-}
 
-{- | Converting between S5 Kripke Models and Knowledge Structures
+{- |
 
-In this module we define and implement translation methods to connect the
-semantics from the two previous sections. This essentially allows us to switch
-back and forth between explicit and symbolic model checking methods.
+__Converting between S5 Kripke Models and Knowledge Structures__
+
+We define and implement translation methods
+between the Kripke models and action models from "SMCDEL.Explicit.S5"
+and the knowledge structures and transformers from "SMCDEL.Symbolic.S5".
+This allows us to switch between explicit and symbolic model checking.
+
+Reference:
+
+- [MG2018]
+  Malvin Gattinger (2018):
+  /New Directions in Model Checking Dynamic Epistemic Logic./
+  PhD thesis, ILLC, Amsterdam.
+  <https://malv.in/phdthesis>
+
 -}
 
 module SMCDEL.Translations.S5 where
@@ -25,6 +37,28 @@ import SMCDEL.Other.BDD2Form
 -- | A function mapping worlds to states.
 type StateMap = World -> State
 
+{- |
+Given
+a pointed S5 Kripke model \(\mathcal{M} = (W,\pi,{\cal K}_1,\dots,{\cal K}_n), w)\)
+with vocabulary \(U \subseteq V\),
+a scene $(\mathcal{F} = (V,\theta, O_1,\dots, O_n)$ with actual state $s$,
+and
+a function \(g \colon W \rightarrow \mathcal{P}(V)\),
+check whether $g$ maps worlds of \(\mathcal{M}\) to __equivalent__ states of $\mathcal{F}$
+by checking the following conditions:
+
+- C1: For all \(w_1, w_2 \in W\) and all \(i\) such that \(1 \leq i \leq n\),
+  we have that \(g(w_1) \cap O_i = g(w_2) \cap O_i\) iff \(w_1 {\cal K}_i w_2\);
+- C2: For all \(w \in W\) and \(p \in U\),
+  we have that \(p\in g(w)\) iff \(\pi(w)(p) = \top\);
+- C3: For every \(s\subseteq V\),
+  \(s\) is a state of \(\mathcal{F}\) iff \(s=g(w)\) for some \(w \in W\); and
+- \(g(w) = s\).
+
+Then for any \(\mathcal{L}(U)\)-formula \(\varphi\) we have:
+  \[ (\mathcal{F},g(w)) \vDash \varphi \iff (\mathcal{M},w) \vDash \varphi \]
+See Lemma 2.4.1 in [MG2018] for the proof.
+-}
 equivalentWith :: PointedModelS5 -> KnowScene -> StateMap -> Bool
 equivalentWith (KrMS5 ws rel val, actw) (kns@(KnS _ _ obs), curs) g =
   c1 && c2 && c3 && g actw == curs where
@@ -35,6 +69,16 @@ equivalentWith (KrMS5 ws rel val, actw) (kns@(KnS _ _ obs), curs) g =
     c2 = and [ (p `elem` g w) == ((val ! w) ! p) | w <- ws, p <- map fst (snd $ head val) ]
     c3 = statesOf kns `seteq` nubOrd (map g ws)
 
+{-|
+Given a pointed model and a KnowScene,
+try to /find/ a function \(g\) linking them and showing their equivalence.
+A fully naive approach would be to consider all possible maps from worlds to subsets of \(U\),
+but we already know by C2 that we need \(\{ p \mid \pi(w)(p) = \top \} \subseteq g(w)\).
+Hence we only generate all possible choices for the propositions
+in the vocabulary of the knowledge structure but not the Kripke Model.
+Finally, we filter out the good maps using `equivalentWith`
+and connect the given actual world and state.
+-}
 findStateMap :: PointedModelS5 -> KnowScene -> Maybe StateMap
 findStateMap pm@(KrMS5 _ _ val, w) scn@(kns, s)
   | vocabOf pm `subseteq` vocabOf kns = listToMaybe goodMaps
@@ -49,9 +93,22 @@ findStateMap pm@(KrMS5 _ _ val, w) scn@(kns, s)
     allMaps  = [ \v -> baseMap v ++ restf v | restf <- allFuncs (worldsOf pm) (powerset extraProps) ]
     goodMaps = filter (\g -> g w == s && equivalentWith pm scn g) allMaps
 
--- * From Knowledge Structures to S5 Kripke Models
+-- * Knowledge Structures to S5 Kripke Models
 
+{-|
+Given a knowledge structure \(\mathcal{F} = (V, \theta, O_1, \dots, O_n)\) and actual state \(s\),
+define the Kripke model \({\cal M}(\mathcal{F} ) := (W, \pi , {\cal K}_1 , \dots, {\cal K}_n )\)
+where
 
+- \(W\) is the set of all states of \(\mathcal{F}\) given by `statesOf`,
+- for each \(w \in W\), let the assignment \(\pi (w)\) be \(w\) itself and
+- for each agent \(i\) and all \(v,w \in W\), let \(v {\cal K}_i w\) iff \(v \cap O_i = w \cap O_i\).
+
+Then for any \(\varphi\) we have:
+  \[ (\mathcal{F},s) \vDash \varphi \iff (M(\mathcal{F}),s) \vDash \varphi\ \]
+
+This is function \(\mathcal{M}(\cdot)\) from Definition 2.4.2 and Theorem 2.4.3 in [MG2018].
+-}
 knsToKripke :: KnowScene -> PointedModelS5
 knsToKripke (kns, curState) = (m, curWorld) where
   (m@(KrMS5 worlds _ _), g) = knsToKripkeWithG kns
@@ -59,6 +116,7 @@ knsToKripke (kns, curState) = (m, curWorld) where
     [cW] -> cW
     _    -> error "knsToKripke failed: Invalid current state."
 
+-- | Like `knsToKripke` but also return the function \(g\).
 knsToKripkeWithG :: KnowStruct -> (KripkeModelS5, StateMap)
 knsToKripkeWithG kns@(KnS ps _ obs) =
   (KrMS5 worlds rel val, g) where
@@ -71,19 +129,41 @@ knsToKripkeWithG kns@(KnS ps _ obs) =
       pairs = map (\s -> (s `intersect` (obs ! i), lav ! s)) (statesOf kns)
     worlds = map snd lav
 
+-- | Like `knsToKripke` but for multipointed structures.
 knsToKripkeMulti :: MultipointedKnowScene -> MultipointedModelS5
 knsToKripkeMulti (kns,statesBdd) = (m, ws) where
   (m, g) = knsToKripkeWithG kns
   ws = filter (\w -> evaluateFun statesBdd (\k -> P k `elem` g w)) (worldsOf m)
 
--- *  From S5 Kripke Models to Knowledge Structures
+-- *  S5 Kripke Models to Knowledge Structures
 
+{- |
+Given an S5 model \({\cal M}=(W,\pi,{\cal K}_1,\dots,{\cal K}_n)\) with vocabulary \(U\),
+define an equivalent knowledge structure \(\mathcal{F}(\mathcal{M})\) as follows.
+For each agent \(i\),
+  write \(\gamma_{i,1},\dots,\gamma_{i,k_i}\) for the equivalence classes given by \({\cal K}_i\) and
+  let \(l_i:= \mathsf{ceiling}(\log_2 k_i)\).
+  Let \(O_i\) be a set of \(l_i\) many fresh propositions.
+  This yields the sets of observational variables \(O_1,\dots,O_n\), all disjoint to each other.
+  If agent \(i\) has a total relation, i.e.\ only one equivalence class, then we have \(O_i=\varnothing\).
+  Enumerate \(k_i\) many subsets of \(O_i\) as \(O_{\gamma_{i,1}},\dots,O_{\gamma_{i,k_i}}\)
+  and define \(g_i : W \rightarrow \mathcal{P}(O_i)\) by
+  \(g_i(w):= O_{\gamma_i(w)}\) where \(\gamma_i(w)\) is the \({\cal K}_i\)-equivalence class of \(w\).
+Let \(V := U \cup \bigcup_{0<i\leq n}O_i\) and define \(g \colon W \rightarrow \mathcal{P}(V)\) by
+  \[ g(w):=\{ v \in U \mid \pi(w)(v)=\top \}\cup \bigcup_{0<i\leq n}g_i(w) \]
+Finally, let \(\mathcal{F}({\cal M}) :=(V,\theta_M,O_1,\dots,O_n)\) using
+  \[ \theta_M := \bigvee \left \{ g(w) \sqsubseteq V \mid w\in W \right \} \]
+where \(\sqsubseteq\) is the abbreviation from `booloutofForm`.
 
+Then for any formula \(\varphi\) we have:
+  \[ (\mathcal{M},w) \vDash \varphi \iff (\mathcal{F}({\cal M}),g(w))\vDash \varphi \]
+-}
 kripkeToKns :: PointedModelS5 -> KnowScene
 kripkeToKns (m, curWorld) = (kns, curState) where
     (kns, g)  = kripkeToKnsWithG m
     curState  = sort $ g curWorld
 
+-- | Same as `kripkeToKns` but also return \(g\).
 kripkeToKnsWithG :: KripkeModelS5 -> (KnowStruct, StateMap)
 kripkeToKnsWithG m@(KrMS5 worlds rel val) = (KnS ps law obs, g) where
   v         = vocabOf m
@@ -101,6 +181,7 @@ kripkeToKnsWithG m@(KrMS5 worlds rel val) = (KnS ps law obs, g) where
   obs       = [ (i,newps i) | i<- ags ]
 
 -- | BDD to say that exactly this subset of a given vocabulary is true.
+-- Similar to `booloutofForm`.
 booloutof :: [Prp] -> [Prp] -> Bdd
 booloutof ps qs = conSet $
   [ var n | (P n) <- ps ] ++
@@ -113,12 +194,13 @@ kripkeToKnsMulti (model, curWorlds) = (kns, curStatesLaw) where
   (kns, g) = kripkeToKnsWithG model
   curStatesLaw = disSet [ booloutof (g w) (vocabOf kns) | w <- curWorlds ]
 
+-- | Check if all worlds in a model have pairwise different valuations.
 uniqueVals :: KripkeModelS5 -> Bool
 uniqueVals (KrMS5 _ _ val) = alldiff (map snd val)
 
--- | Get lists of variables which agent i does (not) observe
--- in model m. This does *not* preserve all information, i.e.
--- does not characterize every possible S5 relation!
+-- | Get lists of variables which agent i does (not) observe in model m.
+-- Note: does /not/ preserve all information and thus
+-- does not characterize every possible S5 relation.
 obsnobs :: KripkeModelS5 -> Agent -> ([Prp],[Prp])
 obsnobs m@(KrMS5 _ rel val) i = (obs,nobs) where
   propsets = map (map (map fst . filter snd . apply val)) (apply rel i)
@@ -137,10 +219,9 @@ descableRels m@(KrMS5 ws rel val) = all (descable . fst) rel where
     newrel (v,w) = (factsAt v `intersect` obs) == (factsAt w `intersect` obs)
     factsAt w = map fst $ filter snd $ apply val w
 
--- | Try to find an equivalent knowledge structure without
--- additional propositions. Will succeed iff valuations are
--- unique and relations can be described using observariables.
--- This is an alternative to `kripkeToKnsMulti`.
+-- | Try to find an equivalent knowledge structure without adding fresh atomic propositions.
+-- Will succeed iff valuations are unique and relations can be described using observariables.
+-- Alternative to `kripkeToKnsMulti`.
 smartKripkeToKns :: PointedModelS5 -> Maybe KnowScene
 smartKripkeToKns (m, cur) =
   if uniqueVals m && descableRels m
@@ -158,13 +239,32 @@ smartKripkeToKnsWithoutChecks (m@(KrMS5 worlds rel val), cur) =
     obsOf = fst.obsnobs m
     curs = map fst $ filter snd $ apply val cur
 
--- TODO: add a translation that uses start if if works, but normal translation otherwise?
+-- TODO: add a translation that uses smart if if works, but normal translation otherwise?
 
 -- TODO: test the above on symmetric and random models, how does it perform?
 
--- * From Knowledge Transformers to S5 Action Models
+-- * Knowledge Transformers to S5 Action Models
 
+{- |
+Given a Knowledge Transformer \(\mathcal{X}=(V^+,\theta^+,O_1^+,\dots,O_n^+)\),
+define an S5 action model \(\mathsf{Act}(\mathcal{X})\) as follows.
+First, let the set of actions be \(A:= \mathcal{P}(V^+)\).
+Second, for any two actions \(\alpha,\beta\in A\),
+  let \(\alpha R_i \beta\) iff \(\alpha \cap O_i^+ = \beta \cap O_i^+\).
+Third, for any action \(\alpha\), let
+  \(\mathsf{pre}(\alpha):= \theta^+\left(\frac{\alpha}\top\right)\left(\frac{V^+ \setminus \alpha}\bot\right)\).
+Finally, let \(\mathsf{Act}(\mathcal{X}) := (A,{(R_i)}_{i\in I},\mathsf{pre})\).
 
+Then for all (\mathcal{F},s) we have:
+  \[
+  (\mathcal{F},s) \times (\mathcal{X},x) \vDash \phi
+  \iff
+  ({\cal M}(\mathcal{F}) \times \mathsf{Act}(\mathcal{X})) , (s,x) \vDash \phi
+  \]
+
+Note: this function can yield action models with contradictions as preconditions.
+We do /not/ remove those as it might very well be that a transformar and thus an action model can never be applied.
+-}
 transformerToActionModelWithG :: KnowTransformer -> (ActionModelS5, StateMap)
 transformerToActionModelWithG trf@(KnTrf addprops addlaw changelaw addobs) = (ActMS5 acts actrel, g) where
   actlist = zip (powerset addprops) [0..(2 ^ length addprops - 1)]
@@ -180,6 +280,7 @@ transformerToActionModelWithG trf@(KnTrf addprops addlaw changelaw addobs) = (Ac
   g :: Action -> State
   g a = head [ x | (x, a') <- actlist, a' == a ]
 
+-- | Use `transformerToActionModelWithG` to translate an event to a pointed action model.
 eventToAction :: Event -> PointedActionModelS5
 eventToAction (trf, event) = (actm, faction) where
   (actm@(ActMS5 acts _), g) = transformerToActionModelWithG trf
@@ -193,6 +294,7 @@ eventToAction (trf, event) = (actm, faction) where
       , "  trf = " ++ show trf
       ]
 
+-- | Use `transformerToActionModelWithG` to translate an multipointed event to a multipointed action model.
 eventToActionMulti :: MultipointedEvent -> MultipointedActionModelS5
 eventToActionMulti (trf, actualEventLaw) = (actm, factions) where
   (actm@(ActMS5 acts _), g) = transformerToActionModelWithG trf
@@ -202,9 +304,39 @@ eventToActionMulti (trf, actualEventLaw) = (actm, factions) where
 
 -- TODO Should "Event" rather be called "Pointed KnowTransformer" ?
 
--- * From S5 Action Models to Knowledge Transformers
+-- * S5 Action Models to Knowledge Transformers
 
+{- |
+Given an S5 action model \(\mathcal{A}=(A,{(R_i)}_{i\in I},\mathsf{pre})\),
+return a transformer as follows and an equivalence map \(g_\mathcal{A}\) from actions to events.
+Let \(P\) be a finite set of fresh propositions such that there is an injective labeling function
+  \(g_\mathcal{A}: A \to \mathcal{P}(P)\) and let
+  \[ \Phi := \bigwedge \left \{ (g_\mathcal{A}(a) \sqsubseteq P) \rightarrow \mathsf{pre}(a) \,\middle|\, a \in A \right \} \]
+where \(\sqsubseteq\) is the ``out of'' abbreviation from `booloutofForm`.
+Now, for each \(i\):
+  Write \(A / R_i\) for the set of equivalence classes induced by \(R_i\).
+  Let \(O_i^+\) be a finite set of fresh propositions such that
+    there is an injective \(g_i : A/R_i \to \mathcal{P}(O_i^+)\) and let
+  \[ \Phi_i := \bigwedge
+      \left \{ \left(g_i(\alpha) \sqsubseteq O_i \right) \rightarrow
+        \left(\bigvee_{a \in \alpha} (g_\mathcal{A}(a) \sqsubseteq P) \right)
+      \,\middle|\, \alpha \in A/R_i \right \} \]
+Finally, let
+  \(V^+ := P \cup \bigcup_{i\in I} P_i\)
+  and \(\theta^+ := \Phi \land \bigwedge_{i\in I} \Phi_i\),
+then return
+  \(\mathsf{Trf}(\mathcal{A}) := (V^+, \theta^+, O_1^+, \dots, O_n^+)\).
 
+Then for any model \(\mathcal{M}\)
+and any formula \(\varphi\) over the
+vocabulary of \(\mathcal{M}\) we have
+  \[
+    \mathcal{M} \times \mathcal{A}, (w,\alpha) \vDash \varphi
+    \iff
+    \mathcal{F}(\mathcal{M}) \times \mathsf{Trf}(\mathcal{A}), (g_\mathcal{M}(w) \cup g_\mathcal{A}(\alpha))  \vDash \varphi
+  \]
+where \(g_\mathcal{M}\) is from `kripkeToKnsWithG`.
+-}
 actionToTransformerWithMap :: ActionModelS5 -> (KnowTransformer, StateMap)
 actionToTransformerWithMap (ActMS5 acts actrel) = (KnTrf addprops addlaw changelaw addobs, eventMap) where
   actions = map fst acts
@@ -234,11 +366,13 @@ actionToTransformerWithMap (ActMS5 acts actrel) = (KnTrf addprops addlaw changel
   changeFor p  = disSet [ boolBddOf $ Conj [ happens a, safepost posts p ] | (a,(_,posts)) <- acts ]
   addobs       = [ (i,newps i) | i<- ags ]
 
+-- | Use `actionToTransformerWithMap` to translate a pointed action model to an event.
 actionToEvent :: PointedActionModelS5 -> Event
 actionToEvent (actm, action) = (trf, efacts) where
   (trf, g) = actionToTransformerWithMap actm
   efacts = g action
 
+-- | Use `actionToTransformerWithMap` to translate a multipointed action model to a multipointed event.
 actionToEventMulti :: MultipointedActionModelS5 -> MultipointedEvent
 actionToEventMulti (actm, curActions) = (trf, curActionsLaw) where
   (trf@(KnTrf addprops _ _ _), g) = actionToTransformerWithMap actm

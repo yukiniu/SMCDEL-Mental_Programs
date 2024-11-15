@@ -81,3 +81,19 @@ hlint:
     - curl -sL https://raw.github.com/ndmitchell/hlint/master/misc/travis.sh | sh -s .
   cache:
     policy: pull
+
+doc:
+  stage: test
+  script:
+    - apt-get update -yqq
+    - apt-get install -y --no-install-recommends graphviz dot2tex libtinfo5 texlive-latex-base texlive-latex-extra poppler-utils preview-latex-style texlive-pstricks poppler-utils ripgrep
+    - stack build smcdel:lib smcdel:test:doctest --haddock
+    - rm -rf ./doc
+    - mv -v `ls -1 -d -t .stack-work/install/*/*/*/doc | head -n 1` ./doc
+  artifacts:
+    when: always
+    paths:
+      - "doc/"
+  cache:
+    <<: *global_cache
+    policy: pull

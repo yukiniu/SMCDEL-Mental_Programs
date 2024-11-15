@@ -1,5 +1,13 @@
 {-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, ScopedTypeVariables #-}
 
+{- |
+
+This module provides the same types and functionality as "SMCDEL.Symbolic.S5"
+but instead of (Has)CacBDD here we use "Data.DecisionDiagram.BDD" the library
+@decision-diagrams@ that is pure Haskell without any C or C++ parts.
+
+-}
+
 module SMCDEL.Symbolic.S5_DD where
 
 import Control.Arrow (first,second,(***))
@@ -20,7 +28,10 @@ import SMCDEL.Internal.Help ((!),alleqWith,apply,applyPartial,lfp,powerset,rtc,s
 import SMCDEL.Internal.TexDisplay
 import SMCDEL.Language
 
--- * Renaming functions from `decision-diagrams` to be like HasCacBDD.
+-- * Aliases for @decision-diagrams@ to be like HasCacBDD
+--
+-- Here we provide function names to be the same as
+-- in "Data.HasCacBDD".
 
 type Bdd = BDD AscOrder
 
@@ -550,7 +561,7 @@ reduce event@(trf@(KnTrf addprops _ _ obs), x) (Dk ags f) =
        [obs ! i | i <- ags]
     ]
 reduce e (Dkw a f)     = reduce e (Disj [Dk a f, Dk a (Neg f)])
-reduce e (G f)         = G <$> reduce e f
+reduce _ (G _)         = Nothing
 reduce _ PubAnnounce  {} = Nothing
 reduce _ Dia          {} = Nothing
 

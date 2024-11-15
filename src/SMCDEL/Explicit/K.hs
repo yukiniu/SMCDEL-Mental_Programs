@@ -100,6 +100,7 @@ instance TexAble MultipointedModel where
   texDocumentTo = texDocumentTo.ViaDot
 
 instance Arbitrary KripkeModel where
+  -- | The following generates random Kripke models.
   arbitrary = do
     nonActualWorlds <- sublistOf [1..8]
     let worlds = 0 : nonActualWorlds
@@ -157,7 +158,7 @@ instance Semantics MultipointedModel where
   isTrue (m,ws) f = all (\w -> isTrue (m,w) f) ws
 
 -- | Transitive closure of the union of the relations of a group.
--- Note that this is not necessarily reflexive.
+-- Note that this is not necessarily reflexive. It uses `lfp`.
 groupRel :: KripkeModel -> [Agent] -> World -> [World]
 groupRel (KrM m) ags w = sort $ lfp extend (oneStepReachFrom w) where
   oneStepReachFrom x = concat [ snd (m ! x) ! a | a <- ags ]
@@ -190,6 +191,9 @@ groupAnnounceAction everyone listeners f = (ActM am, 1) where
     , (2, Act { pre = Top, post = M.empty, rel = M.fromList [(i,[2]) | i <- everyone] } )
     ]
 
+-- * Bisimulations
+
+-- | Check that a given relation is indeed a bisimulation.
 checkBisim :: Bisimulation -> KripkeModel -> KripkeModel -> Bool
 checkBisim [] _  _  = False
 checkBisim z  m1 m2 =
@@ -203,6 +207,18 @@ checkBisim z  m1 m2 =
 
 checkBisimPointed :: Bisimulation -> PointedModel -> PointedModel -> Bool
 checkBisimPointed z (m1,w1) (m2,w2) = (w1,w2) `elem` z && checkBisim z m1 m2
+
+-- * Distinguishing Formulas
+
+{- $
+The following is an adaptation of Algorithm 1 in [GK2016] which given two Kripke models creates a \emph{status map} saying which worlds are bisimilar or can be distinguished.
+
+In a status map @statusMap (w1,w2) == Nothing@ means that @w1@ and @w2@ are bisimilar or (during the run of `diff`) the status is not (yet) known.
+In contrast, @statusMap (w1,w2) == Just f@ means that formula @f@ holds at @w1@ but not at @w2@.
+
+The updates to the status map are monotone in the sense that `Nothing` can be changed to @Just f@, but not vice versa.
+Hence we can use `lfp` to iterate the update until a fixpoint is reached, instead of updating a fixed number of times as done in [GK2016].
+-}
 
 type Status = Maybe Form
 type StatusMap = M.Map (World,World) Status
@@ -238,12 +254,17 @@ diff m1 m2 = lfp step start where
       [] -> Nothing
       (f:_) -> Just f
 
+-- | Given two pointed models, either find a bisimulation or a distinguishing formula.
 diffPointed :: PointedModel -> PointedModel -> Either Bisimulation Form
 diffPointed (m1,w1) (m2,w2) =
   case diff m1 m2 ! (w1,w2) of
     Nothing -> Left $ M.keys $ M.filter isNothing (diff m1 m2)
     Just f -> Right f
 
+-- * Minimization
+
+-- | Get the generated submodel of a pointed model.
+-- This may be the same model or may contain fewer worlds.
 generatedSubmodel :: PointedModel -> PointedModel
 generatedSubmodel (KrM m, cur) = (KrM newm, cur) where
   newm = M.mapMaybeWithKey isin m
@@ -253,8 +274,31 @@ generatedSubmodel (KrM m, cur) = (KrM newm, cur) where
   reachable = lfp follow [cur] where
     follow xs = sort . nubInt $ concat [ snd (m ! x) ! a | x <- xs, a <- agentsOf (KrM m) ]
 
+-- TODO bisiminimize
+
+-- * Action Models
+
+{-$
+We now implement /epistemic/ and /factual/ change.
+On standard Kripke models this is done with /action models/ which
+contain pre- and postconditions to describe the two sorts of change.
+
+What should be the type for postconditions?
+A function `Prp -> Form` seems natural, but it would not give us a
+way to get the domain and would always have to be applied to all the
+propositions --- there would be nothing special about the trivial
+postcondition `\ p -> PrpF p`.
+
+To capture the partiality we could also use lists of tuples `[(Prp,Form)]`.
+However, not every such list is a substitution and thus a valid postcondition,
+for it might contain two tuples with the same left part.
+Hence we use a `Map` type which captures partial functions.
+-}
+
+-- | Postconditions given as a map from `Prp` to `Form`.
 type PostCondition = M.Map Prp Form
 
+-- | A single action has a `pre`condition, `post`conditions and `rel`ation edges.
 data Act = Act {pre :: Form, post :: PostCondition, rel :: M.Map Agent [Action]}
   deriving (Eq,Ord,Show)
 
@@ -263,6 +307,7 @@ safepost :: Act -> Prp -> Form
 safepost ch p | p `elem` M.keys (post ch) = post ch ! p
               | otherwise = PrpF p
 
+-- | An action model is a map from `Action` to `Act`.
 newtype ActionModel = ActM (M.Map Action Act)
   deriving (Eq,Ord,Show)
 
@@ -314,6 +359,19 @@ instance Update MultipointedModel MultipointedActionModel where
           | otherwise = oldbit
         reachFor i = (i, [ news' | ((s',a'),news') <- worldPairs, s' `elem` snd (m !  s) ! i, a' `elem` rel (am ! a) ! i ])
 
+-- ** Random generation
+
+{- $
+We generate a somewhat random action model with change: We have four actions where
+one has a trivial and the other random preconditions. All four actions change
+one randomly selected atomic proposition to a random constant or the value of
+another randomly selected atomic proposition.
+Agent 0 can distinguish all events, the other agents have random accessibility
+relations.
+
+Note that for now we only use boolean preconditions.
+-}
+
 instance Arbitrary ActionModel where
   arbitrary = do
     let allactions = [0..3]
@@ -335,6 +393,8 @@ instance Arbitrary ActionModel where
   shrink (ActM am) = [ ActM $ removeFromRels k $ M.delete k am | k <- M.keys am, k /= 0 ] where
     removeFromRels = M.map . removeFrom where
       removeFrom k c = c { rel = M.map (delete k) (rel c) }
+
+-- ** Visualization
 
 instance KripkeLike ActionModel where
   directed = const True

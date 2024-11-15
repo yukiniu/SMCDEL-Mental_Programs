@@ -1,3 +1,18 @@
+{- |
+
+__Atomic-knowing Gossip on knowledge structures with factual change__
+
+This module models the same gossip problem as in "SMCDEL.Examples.GossipKw", but differently.
+Agent \(a\) knows the secret of (b\) iff the atomic proposition \(S_a b\) is true.
+Learning of secrets is then modeled as factual change.
+
+Again we only consider the classic, static version of the gossip problem
+where \(N\) is a total graph and thus everyone can call everyone.
+
+Most functions here take a parameter \(n\) for the number of agents.
+
+-}
+
 module SMCDEL.Examples.GossipS5 where
 
 import SMCDEL.Language
@@ -84,3 +99,22 @@ whoKnowsMeta scn = [ (k, map (meta k) [0..maxid] ) | k <- [0..maxid] ] where
 allSequs :: Int -> Int -> [ [(Int,Int)] ]
 allSequs _ 0 = [ [] ]
 allSequs n l = [ (i,j):rest | rest <- allSequs n (l-1), i <- gossipers n, j <- gossipers n, i < j ]
+
+{- $
+For example, among three agents, after a call the non-involved agent
+still knows who knows what:
+
+>>> mapM_ print (whoKnowsMeta (after 3 [(0,1)]))
+(0,[(0,"XY_"),(1,"YX_"),(2,"__X")])
+(1,[(0,"XY_"),(1,"YX_"),(2,"__X")])
+(2,[(0,"XY_"),(1,"YX_"),(2,"__X")])
+
+This is different for four agents, where the two non-involved agents
+are unsure which call happened:
+
+>>> mapM_ print (whoKnowsMeta (after 4 [(0,1)]))
+(0,[(0,"XY__"),(1,"YX__"),(2,"__X_"),(3,"___X")])
+(1,[(0,"XY__"),(1,"YX__"),(2,"__X_"),(3,"___X")])
+(2,[(0,"X?_?"),(1,"?X_?"),(2,"__X_"),(3,"??_X")])
+(3,[(0,"X??_"),(1,"?X?_"),(2,"??X_"),(3,"___X")])
+-}

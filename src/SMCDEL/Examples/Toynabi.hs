@@ -1,3 +1,5 @@
+-- | Toy Version of Hanabi
+
 module SMCDEL.Examples.Toynabi where
 
 import Data.List ((\\),sort)
@@ -141,3 +143,16 @@ exampleResult =  generatedSubmodel $ knsToKripke (fst theKNS, head $ statesOf $ 
     `update` snd (tell 2 4 1 0 0)
     `update` snd (play 2 4 1 0)
     `update` snd (play 2 4 1 1)
+
+{- $
+
+As an example, here is an implicitly coordinated plan for 2 agents and 4 cards, found via BFS:
+
+>>> fmap ppICPlan (findSequentialIcPlanBFS 6 (toynabi 2 4))
+Just "1:tell 2 card 2 @ 0; 2:tell 1 card 0 @ 0; 1:1 plays position 0; 1:1 plays position 1; 2:2 plays position 0; 2:2 plays position 1."
+
+-}
+
+-- TODO: find an IC plan for Toynabi via DFS
+-- ghci> findSequentialIcPlan  6 (toynabi 2 4)
+-- []

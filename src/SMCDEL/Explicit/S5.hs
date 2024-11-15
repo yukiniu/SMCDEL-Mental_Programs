@@ -1,5 +1,25 @@
 {-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, FlexibleContexts #-}
 
+{- |
+This module defines the standard semantics of Dynamic Epistemic Logic ($\mathsf{S5}_n$) on Kripke models.
+The result is a simple explicit model checker, similar to "SMCDEL.Explicit.DEMO_S5" from [vE2014].
+The module her is also used for the translations given in "SMCDEL.Translations.S5".
+
+References used here:
+
+- [BMS1998]
+  Alexandru Baltag, Lawrence S. Moss, Slawomir Solecki (1998):
+  /The logic of public announcements, common knowledge, and private suspicions./
+  TARK VII.
+  <http://www.tark.org/proceedings/tark_jul22_98/p43-baltag.pdf>
+
+- [vE2014]
+  Jan van Eijck (2014):
+  /DEMO-S5./
+  <https://staff.fnwi.uva.nl/d.j.n.vaneijck2/software/demo_s5/>
+
+-}
+
 module SMCDEL.Explicit.S5 where
 
 import Control.Arrow (second,(&&&))
@@ -14,6 +34,30 @@ import SMCDEL.Internal.TexDisplay
 import SMCDEL.Internal.Help (alleqWith,fusion,intersection,apply,(!),lfp)
 import Test.QuickCheck
 
+-- * Kripke Models
+
+{- $
+
+A /Kripke model/ for a set of agents \(I=\{1,\dots,n\}\) is a tuple
+\({\cal M}=(W,\pi ,{\cal K}_1 ,\dots,{\cal K}_n )\), where \(W\) is a set of
+/worlds/, \(\pi\) associates with each world a truth assignment to
+the primitive propositions, so that \(\pi (w)(p)\in \{ \top, \bot \}\)
+for each world \(w\) and primitive proposition \(p\), and
+\({\cal K}_1,\dots, {\cal K}_n\) are binary accessibility relations on \(W\).
+By convention, \(W^{\cal M}\), \({\cal K}_i^{\cal M}\) and \(\pi^{\cal M}\) are used to refer to the components of \(\cal M\).
+We omit the superscript \(\cal M\) if it is clear from context.
+Finally, let \({\cal C}_\Delta^{\cal M}\) be the transitive closure of \(\bigcup_{i\in\Delta}{\cal K}_i^{\cal M}\).
+
+A /pointed Kripke model/ is a pair \(({\cal M},w)\) consisting of a Kripke model and a world \(w \in W^{\cal M}\.
+A model \(\cal M\) is called an /S5 Kripke model/ iff, for every \(i\), \({\cal K}_i^{\cal M}\) is an equivalence relation.
+
+In the module here we only implement S5 models. For the more general models, use "SMCDEL.Explicit.K" instead.
+
+A model \(\cal M\) is called /finite/ iff \(W^{\cal M}\) is finite.
+In the implementation here we always assume finite models, even if Haskell due to its laziness in principle would be able to work with infinite lists of worlds.
+-}
+
+-- | Possible worlds are represented by integers.
 type World = Int
 
 class HasWorlds a where
@@ -21,10 +65,17 @@ class HasWorlds a where
 
 instance (HasWorlds a, Pointed a b) => HasWorlds (a,b) where worldsOf = worldsOf . fst
 
+-- | A partition to encode an equivalence relation.
 type Partition = [[World]]
+
+-- | An assignment, given explicitly by listing the truth value for each atomic propostion.
 type Assignment = [(Prp,Bool)]
 
-data KripkeModelS5 = KrMS5 [World] [(Agent,Partition)] [(World,Assignment)] deriving (Eq,Ord,Show)
+-- | S5 Kripke Model.
+data KripkeModelS5 = KrMS5 [World]               -- ^ set of worlds
+                           [(Agent,Partition)]   -- ^ epistemic relations
+                           [(World,Assignment)]  -- ^ valuation function
+                      deriving (Eq,Ord,Show)
 
 instance Pointed KripkeModelS5 World
 type PointedModelS5 = (KripkeModelS5,World)
@@ -83,6 +134,8 @@ instance Arbitrary KripkeModelS5 where
   shrink m@(KrMS5 worlds _ _) =
     [ m `withoutWorld` w | w <- worlds, not (null $ delete w worlds) ]
 
+-- | Standard semantics for explicit model checking on S5 Kripke models.
+-- See Definition 1.1.3 and 1.2.2 in [MG2018].
 eval :: PointedModelS5 -> Form -> Bool
 eval _ Top = True
 eval _ Bot = False
@@ -122,6 +175,7 @@ eval pm (Dia (Dyn dynLabel d) f) = case fromDynamic d of
     Just mpactm -> eval pm (preOf (mpactm :: MultipointedActionModelS5)) && eval (pm `update` mpactm) f
     Nothing     -> error $ "cannot update S5 Kripke model with '" ++ dynLabel ++ "':\n  " ++ show d
 
+-- | Is the given formula valid in the model, i.e. true at all worlds?
 valid :: KripkeModelS5 -> Form -> Bool
 valid m@(KrMS5 worlds _ _) f = all (\w -> eval (m,w) f) worlds
 
@@ -136,7 +190,8 @@ instance Semantics MultipointedModelS5 where
 
 -- | Public announcements on Kripke models.
 instance Update KripkeModelS5 Form where
-  checks = [] -- allow updating with formulas that are not globally true.
+  -- | No checks, to announce formulas not globally true.
+  checks = []
   unsafeUpdate m@(KrMS5 sts rel val) form = KrMS5 newsts newrel newval where
     newsts = filter (\s -> eval (m,s) form) sts
     newrel = map (second relfil) rel
@@ -149,6 +204,12 @@ instance Update PointedModelS5 Form where
 instance Update MultipointedModelS5 Form where
   unsafeUpdate (m,ws) f =
     let newm = unsafeUpdate m f in (newm, ws `intersect` worldsOf newm)
+
+-- * Visualization
+
+-- $
+-- We visualize models using "SMCDEL.Internal.TexDisplay".
+-- For example output, see "SMCDEL.Examples"
 
 instance KripkeLike KripkeModelS5 where
   directed = const False
@@ -184,6 +245,8 @@ instance TexAble MultipointedModelS5 where
   texTo         = texTo.ViaDot
   texDocumentTo = texDocumentTo.ViaDot
 
+-- * Bisimulations
+
 type Bisimulation = [(World,World)]
 
 checkBisim :: Bisimulation -> KripkeModelS5 -> KripkeModelS5 -> Bool
@@ -200,6 +263,12 @@ checkBisim z  m1@(KrMS5 _ rel1 val1) m2@(KrMS5 _ rel2 val2) =
 checkBisimPointed :: Bisimulation -> PointedModelS5 -> PointedModelS5 -> Bool
 checkBisimPointed z (m1,w1) (m2,w2) = (w1,w2) `elem` z && checkBisim z m1 m2
 
+--  TODO findBisimulationFrom :: PointedModelS5 -> PointedModelS5 -> Maybe Bisimulation
+
+-- * Minimization and Optimization
+
+-- | Fenerated submodel of a pointed model.
+-- This is the smallest submodel closed under the epistemic relations
 generatedSubmodel :: PointedModelS5 -> PointedModelS5
 generatedSubmodel (KrMS5 oldWorlds rel val, cur) =
   if cur `notElem` oldWorlds
@@ -211,6 +280,14 @@ generatedSubmodel (KrMS5 oldWorlds rel val, cur) =
       newrel = map (second $ filter (any (`elem` newWorlds))) rel
       newval = filter (\p -> fst p `elem` newWorlds) val
 
+-- TODO rewrite bisim and generated Submodel to work on multipointed by default
+
+-- | Compute the equivalence classes of bisimilar worlds within a model. Used in `bisiminimize`.
+--
+-- We use the following version of partition refinement.
+-- The initial partition is given by the valuation.
+-- Then we `foldl` through all agents once, splitting the existing blocks with their relation.
+-- As we only have equivalence relations, one pass is enough and no looping until we reach a fixpoint is needed.
 bisimClasses :: KripkeModelS5 -> [[World]]
 bisimClasses m@(KrMS5 _ rel val) = refine sameAssignmentPartition where
   sameAssignmentPartition =
@@ -227,6 +304,8 @@ checkBisimClasses m =
       | part <- bisimClasses m, w1 <- part, w2 <-part, w1 /= w2 ] where
     swapZ w1 w2 = sort $ [(w1,w2),(w2,w1)] ++ [ (w,w) | w <- worldsOf m \\ [w1,w2] ]
 
+-- | Minimize a pointed model under bisimulation.
+-- Uses `bisimClasses` to find a possibly smaller model.
 bisiminimize :: PointedModelS5 -> PointedModelS5
 bisiminimize (m,w) =
   if all ((==1) . length) (bisimClasses m)
@@ -241,7 +320,14 @@ bisiminimize (m,w) =
       newVal       = [ (wNew, oldVal ! wOld) | (wOld:_,wNew) <- copyRel ]
 
 instance Optimizable PointedModelS5 where
+  -- | Optimize a Kripke model by taking the generated submodel and then minimizing under bisimulation.
+  -- Does /not/ use the given vocabulary.
   optimize _ = bisiminimize . generatedSubmodel
+
+-- * S5 Action Models
+
+-- $
+-- We model epistemic and ontic events using the well-known action models from [BMS1998].
 
 type Action = Int
 type PostCondition = [(Prp,Form)]

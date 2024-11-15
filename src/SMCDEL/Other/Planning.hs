@@ -9,6 +9,7 @@ Our main inspiration for this are the following references.
   /DEL Planning and Some Tractable Cases/.
   LORI 2011.
   <https://doi.org/10.1007/978-3-642-24130-7_13>
+
 - [EBMN2017]
   Thorsten Engesser, Thomas Bolander, Robert Mattmüller, and Bernhard Nebel (2017):
   /Cooperative Epistemic Multi-Agent Planning for Implicit Coordination/.
@@ -132,17 +133,13 @@ dix op f = Conj [Dia op Top, box op f]
 
 -- * Planning Tasks
 
-{- $
-A planning task (also called a planning problem) is given by a start, a list of actions and a goal.
-Note that \texttt{state} and \texttt{action} here are type variables,
-  because we use polymorphic functions for explicit and symbolic planning in K and S5.
--}
-
+-- | A planning task (or: planning problem) is given by a start, a list of actions and a goal.
+-- Here @state@ and @action@ are type variables, so we can write polymorphic functions that
+-- work for explicit and symbolic planning, both in K and in S5.
 data Task state action = Task state [(String,action)] Form
   deriving (Eq,Ord,Show)
 
-
--- Given a maximal search depth and a task, we search for a plan as follows.
+-- | Given a maximal search depth and a task, search for a plan.
 findPlan :: (Eq state, Update state action) => Int -> Task state action -> [Plan action]
 findPlan d (Task now acts goal)
   | now |= goal = [ Stop ]

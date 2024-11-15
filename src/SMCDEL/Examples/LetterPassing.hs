@@ -1,3 +1,14 @@
+{- |
+
+We model Example 6 from:
+
+- [EBMN2017]
+  Thorsten Engesser, Thomas Bolander, Robert Mattmüuller and Bernhard Nebel (2017):
+  /Cooperative Epistemic Multi-Agent Planning for Implicit Coordination/.
+  <https://doi.org/10.4204/EPTCS.243.6>
+
+-}
+
 module SMCDEL.Examples.LetterPassing where
 
 import Data.List (sort)
@@ -6,6 +17,8 @@ import SMCDEL.Language
 import SMCDEL.Symbolic.S5
 import SMCDEL.Translations.S5 (booloutof)
 import SMCDEL.Other.Planning
+
+-- * Formula helper functions
 
 explain :: Prp -> String
 explain (P k) | odd k     = "at " ++ show ((k + 1) `div` 2)
@@ -18,6 +31,8 @@ forP k = P $ k*2
 at, for :: Int -> Form
 at  = PrpF . atP
 for = PrpF . forP
+
+-- * Version for 3 agents
 
 letterStart :: MultipointedKnowScene
 letterStart = (KnS voc law obs, cur) where
@@ -47,12 +62,34 @@ letterPass n i j = (label, (KnTrf addprops addlaw changeLaw addObs, boolBddOf To
   -- privately tell j who the receiver is:
   addObs      = [ (show k, if k == j then addprops else []) | k <- [1..n] ]
 
+-- | For all agents @i@, if @for i@ then @at i@.
 letterGoal :: Form
 letterGoal = Conj [ for i `Impl` at i | i <- [1,2,3] ]
 
 letter :: CoopTask MultipointedKnowScene MultipointedEvent
 letter = CoopTask letterStart actions letterGoal where
   actions = [ (show i, letterPass 3 i j) | (i,j) <- [(1,2),(2,1),(2,3),(3,2)] ]
+
+{- $
+
+With a search depth of 2 we find this plan:
+
+>>> ppICPlan (head (findSequentialIcPlan 2 letter))
+"1:1->2; 2:2->3."
+
+Note that this is depth-first search which can lead to unnecessarily long plans:
+
+>>> ppICPlan (head (findSequentialIcPlan 4 letter))
+"1:1->2; 2:2->1; 1:1->2; 2:2->3."
+
+We can also use breadth-first search:
+
+>>> fmap ppICPlan (findSequentialIcPlanBFS 2 letter)
+Just "1:1->2; 2:2->3."
+
+-}
+
+-- * General version for \(n\) agents
 
 letterStartFor :: Int -> MultipointedKnowScene
 letterStartFor n = (KnS voc law obs, cur) where
