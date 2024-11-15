@@ -112,6 +112,7 @@ FormList : Form { [$1] } | Form COMMA FormList { $1:$3 }
 String : STR { $1 }
 StringList : String { [$1] } | String COMMA StringList { $1:$3 }
 ObserveLine : STR COLON IntList { ($1,$3) }
+            | STR COLON { ($1, []) }
 ObserveSpec : ObserveLine { [$1] } | ObserveLine ObserveSpec { $1:$2 }
 JobList : Job { [$1] } | Job JobList { $1:$2 }
 State : '{' '}' { [] }

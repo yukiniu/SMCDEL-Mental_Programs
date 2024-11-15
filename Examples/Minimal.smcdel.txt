@@ -1,0 +1,11 @@
+VARS 1,2
+
+LAW  OR (1, 2)
+
+OBS  alice: 1
+     bob:
+     carol: 2
+
+VALID?
+   [! 1]
+   alice knows that (bob knows that 1)

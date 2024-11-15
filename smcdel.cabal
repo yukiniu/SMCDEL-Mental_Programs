@@ -27,6 +27,7 @@ extra-source-files:
     Examples/CherylsBirthday.smcdel.txt
     Examples/DiningCryptographers.smcdel.txt
     Examples/DrinkingLogicians.smcdel.txt
+    Examples/Minimal.smcdel.txt
     Examples/MuddyChildren.smcdel.txt
 extra-doc-files: docs/*.svg docs/*.png
 
