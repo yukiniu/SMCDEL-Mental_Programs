@@ -61,6 +61,8 @@ main = hspec $ do
     prop "boolEvalViaBdd agrees on simplified formulas" $
       \(BF bf) props -> let truths = nub props in
         boolEvalViaBdd truths bf === boolEvalViaBdd truths (simplify bf)
+    prop "optimize preserves global truth" $
+      \kns f -> isTrue (kns :: KnowStruct) f === isTrue (optimize defaultVocabulary kns) f
     prop "optimize preserves truth (without global modality)" $
       \kns f -> let scene = (kns :: KnowStruct, head $ statesOf kns)
                 in not (containsGlobal f) ==> isTrue scene f === isTrue (optimize defaultVocabulary scene) f

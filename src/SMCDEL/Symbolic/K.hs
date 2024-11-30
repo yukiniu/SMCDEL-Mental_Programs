@@ -583,6 +583,14 @@ instance Optimizable BelStruct where
   optimize myVocab bls = fst $ replaceEquivExtra myVocab $
     withoutProps ((determinedVocabOf bls `intersect` nonobsVocabOf bls) \\ myVocab) bls
 
+instance Optimizable BelScene where
+  optimize myVocab (oldBls,oldState) = (newBls,newState) where
+    intermediateBls = withoutProps (determinedVocabOf oldBls `intersect` nonobsVocabOf oldBls \\ myVocab) oldBls
+    removedProps = vocabOf oldBls \\ vocabOf intermediateBls
+    intermediateState = oldState \\ removedProps
+    (newBls,replRel) = replaceEquivExtra myVocab intermediateBls
+    newState = intermediateState \\ map fst replRel
+
 -- | Removes `determinedVocabOf` and `nonobsVocabOf`, then applies `replaceEquivExtra`.
 instance Optimizable MultipointedBelScene where
   optimize myVocab (oldBls,oldStatesBdd) = (newKns,newStatesBdd) where

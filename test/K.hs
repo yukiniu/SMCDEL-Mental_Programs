@@ -42,8 +42,12 @@ main = hspec $ do
     prop "(K i f) and (Neg (K i (K i f)))" $ expectFailure (\bls (Ag i) f -> SymK.evalViaBdd bls (Conj [K i f,  Neg (K i (K i f))]))
   describe "multipointed belief structures (all-pointed, for now)" $
     prop "semanticEquivSymToExp" $ \bls f -> alleq $ semanticEquivSymToExpMulti bls f
-  prop "optimize on belief structures preserves truth" $
+  prop "optimize preserves global truth" $
     \bls f -> isTrue (bls::SymK.BelStruct) f === isTrue (optimize defaultVocabulary bls) f
+  prop "optimize preserves truth on scenes (without global modality)" $
+    \bls f -> let scene = (bls :: SymK.BelStruct, head $ statesOf bls)
+      in not (containsGlobal f) ==> isTrue scene f === isTrue (optimize defaultVocabulary scene) f
+
   modifyMaxSuccess (const 1000) $ prop "optimize on belief structures can reduce the vocabulary" $
     expectFailure (\bls -> length (vocabOf (bls :: SymK.BelStruct)) === length (vocabOf (optimize defaultVocabulary bls)))
 

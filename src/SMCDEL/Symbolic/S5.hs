@@ -344,7 +344,7 @@ instance Optimizable KnowScene where
     removedProps = vocabOf oldKns \\ vocabOf intermediateKns
     intermediateState = oldState \\ removedProps
     (newKns,replRel) = replaceEquivExtra myVocab intermediateKns
-    newState = sort $ (intermediateState \\ map fst replRel) ++ [ q | (p,q) <- replRel, p `elem` intermediateState ]
+    newState = intermediateState \\ map fst replRel
 
 instance Optimizable MultipointedKnowScene where
   optimize myVocab (oldKns,oldStatesBdd) = (newKns,newStatesBdd) where
