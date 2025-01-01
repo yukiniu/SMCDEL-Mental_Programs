@@ -13,8 +13,9 @@ Changed:
 - Improve `pubAnnounceTest` and `groupAnnounceTest`
 - Bug fix: in `transformerToActionModelWithG` do not filter
 - Bug fix: in `bddOf` for `Dia` use `unsafeUpdate`
+- Bug fix in HasCacBDD-0.3.0.0: segfault on Apple M1 and ARM
 
-## v1.3.0 (2022-04-24)
+## v1.3.0 (2024-04-24)
 
 New:
 
