@@ -7,7 +7,7 @@ import Data.HasCacBDD hiding (Top,Bot)
 import qualified Data.HasCacBDD as B (BddTree(..))
 
 import SMCDEL.Language
-import SMCDEL.Succinct.K
+import SMCDEL.Succinct.K_Old
 import SMCDEL.Symbolic.K
 import SMCDEL.Symbolic.S5 (boolBddOf, boolEvalViaBdd)
 
@@ -24,7 +24,7 @@ main = hspec $ do
         voc' = [P 0, P 1]
         x = [] -- need to be subsets of voc
         y = [P 0]
-    in (forAll (randomboolformWith voc' 7) (\(BF f) -> rel voc [] (translate'' voc (boolBddOf f)) x y == ((mv x ++ cp y) `boolEvalViaBdd` f)))
+    in forAll (randomboolformWith voc' 7) (\(BF f) -> rel voc [] (translate'' voc (boolBddOf f)) x y == ((mv x ++ cp y) `boolEvalViaBdd` f))
 
   it "test2 translate''" $
     let voc = map P [0..6]

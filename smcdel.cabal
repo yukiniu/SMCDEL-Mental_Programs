@@ -89,6 +89,7 @@ library
       SMCDEL.Other.MCTRIANGLE
       SMCDEL.Other.Planning
       SMCDEL.Succinct.K
+      SMCDEL.Succinct.K_Old
       SMCDEL.Symbolic.K
       SMCDEL.Symbolic.Ki
       SMCDEL.Symbolic.S5
