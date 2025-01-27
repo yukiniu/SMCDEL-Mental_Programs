@@ -85,10 +85,10 @@ library
       SMCDEL.Internal.TexDisplay
       SMCDEL.Internal.Token
       SMCDEL.Language
-      SMCDEL.Mental_Programs.Syntax_Semantics
       SMCDEL.Other.BDD2Form
       SMCDEL.Other.MCTRIANGLE
       SMCDEL.Other.Planning
+      SMCDEL.Succinct.K
       SMCDEL.Symbolic.K
       SMCDEL.Symbolic.Ki
       SMCDEL.Symbolic.S5
@@ -246,6 +246,24 @@ test-suite k
     , happy
   build-depends:
       QuickCheck
+    , base >=4.8 && <5
+    , containers
+    , hspec
+    , smcdel
+  default-language: Haskell2010
+
+test-suite succinct
+  type: exitcode-stdio-1.0
+  main-is: test/succinct.hs
+  other-modules:
+      Paths_smcdel
+  ghc-options: -Wall -with-rtsopts=-M8G
+  build-tools:
+      alex
+    , happy
+  build-depends:
+      HasCacBDD
+    , QuickCheck
     , base >=4.8 && <5
     , containers
     , hspec

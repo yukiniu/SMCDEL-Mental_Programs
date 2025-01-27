@@ -140,6 +140,16 @@ tests:
       - hspec
       - QuickCheck
       - smcdel
+  succinct:
+    main: test/succinct.hs
+    ghc-options: -with-rtsopts=-M8G
+    dependencies:
+      - base >= 4.8 && < 5
+      - containers
+      - HasCacBDD
+      - hspec
+      - QuickCheck
+      - smcdel
   web:
     main: test/Web.hs
     ghc-options: -with-rtsopts=-M8G

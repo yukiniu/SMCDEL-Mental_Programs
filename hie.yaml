@@ -15,6 +15,9 @@ cradle:
     - path: "./test/K.hs"
       component: "smcdel:test:k"
 
+    - path: "./test/succinct.hs"
+      component: "smcdel:test:succinct"
+
     - path: "./test/Translations.hs"
       component: "smcdel:test:translations"
 
