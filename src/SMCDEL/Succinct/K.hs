@@ -11,13 +11,22 @@ References:
   Tristan Charrier and François Schwarzentruber:
   /A Succinct Language for Dynamic Epistemic Logic/.
   In: AAMAS 2017.
-  <http://www.aamas2017.org/proceedings/pdfs/p123.pdf>
+  Paper: <http://www.aamas2017.org/proceedings/pdfs/p123.pdf>
+  Long version: <https://hal.science/hal-01487001>
 
 - [G 2020]
   Malvin Gattinger: /Towards Symbolic and Succinct Perspective Shifts/.
   In: EpiP at ICAPS 2020.
   Paper: <https://doi.org/10.5281/zenodo.4767546>
-  Video: <https://www.youtube-nocookie.com/embed/h-LFXeqXKf4?recommends=0>
+  Video: <https://www.youtube-nocookie.com/embed/h-LFXeqXKf4?rel=0>
+
+The implementation here is based on:
+
+- [H 2020]
+  Maickel Hartlief: /Making Model Checking Scalable: Implementing Succinct Kripke Models for Public Announcement Logic/
+  BSc thesis, University of Groningen, 2020.
+  Thesis: <https://fse.studenttheses.ub.rug.nl/23607>
+  Code: <https://github.com/maickelhartlief/SucExpModelCheckers>
 -}
 
 module SMCDEL.Succinct.K where
