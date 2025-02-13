@@ -40,6 +40,9 @@ import SMCDEL.Internal.Help (powerset)
 import Data.HasCacBDD hiding (Top, Bot)
 import SMCDEL.Symbolic.S5 (boolBddOf, boolEvalViaBdd)
 
+import SMCDEL.Symbolic.K (mvP, cpP, mv, cp)
+import Data.Maybe
+
 -- | Syntax of mental programs.
 -- π ::= p <- β | β? | π ; π | π ∪ π | π ∩ π) | π⁻
 data MenProg = Ass Prp Form            -- ^ assign value of form to prop (can be restricted to Top/Bot)
@@ -108,32 +111,32 @@ isStateOf s (SMo vocab betaM (f:fs) mp) =
      oldModel = SMo vocab betaM fs mp
 
 -- | Are the two given states connected via this mental program?
-areConnected :: MenProg -> State -> State -> Bool
-areConnected (Ass (P i) f) s1 s2       = if boolIsTrue s1 f
+areConnected :: [Prp] -> MenProg -> State -> State -> Bool
+areConnected _ (Ass (P i) f) s1 s2       = if boolIsTrue s1 f
                                          then IntSet.insert i s1 == s2
                                          else IntSet.delete i s1 == s2
-areConnected (Tst f) s1 s2         = s1 == s2 && boolIsTrue s1 f
-areConnected (Seq []       ) s1 s2 = s1 == s2
-areConnected (Seq (mp:rest)) s1 s2 = any (\ s3 -> areConnected (Seq rest) s3 s2) (reachableFromHere mp s1)
-areConnected (Cup []       ) _ _   = False
-areConnected (Cup (mp:rest)) s1 s2 = areConnected mp s1 s2 || areConnected (Cup rest) s1 s2
-areConnected (Cap []       ) _ _   = True
-areConnected (Cap (mp:rest)) s1 s2 = areConnected mp s1 s2 && areConnected (Cap rest) s1 s2
-areConnected (Inv mp       ) s1 s2 = areConnected mp s2 s1
+areConnected _ (Tst f) s1 s2         = s1 == s2 && boolIsTrue s1 f
+areConnected _ (Seq []       ) s1 s2 = s1 == s2
+areConnected voc (Seq (mp:rest)) s1 s2 = any (\ s3 -> areConnected voc (Seq rest) s3 s2) (reachableFromHere voc mp s1)
+areConnected _ (Cup []       ) _ _   = False
+areConnected voc (Cup (mp:rest)) s1 s2 = areConnected voc mp s1 s2 || areConnected voc (Cup rest) s1 s2
+areConnected _ (Cap []       ) _ _   = True
+areConnected voc (Cap (mp:rest)) s1 s2 = areConnected voc mp s1 s2 && areConnected voc (Cap rest) s1 s2
+areConnected voc (Inv mp       ) s1 s2 = areConnected voc mp s2 s1
 
 -- | Set of states that are reachable from a certain state via a mental program.
-reachableFromHere :: MenProg -> State -> Set State
-reachableFromHere (Ass (P i) f) s = if boolIsTrue s f
+reachableFromHere :: [Prp] -> MenProg -> State -> Set State
+reachableFromHere _ (Ass (P i) f) s = if boolIsTrue s f
                                      then Set.singleton $ IntSet.insert i s
                                      else Set.singleton $ IntSet.delete i s
-reachableFromHere (Tst f) s         = if boolIsTrue s f then Set.singleton s else Set.empty
-reachableFromHere (Seq []) s        = Set.singleton s
-reachableFromHere (Seq (mp:rest)) s = Set.unions $ Set.map (reachableFromHere (Seq rest)) (reachableFromHere mp s)
-reachableFromHere (Cup []) _        = Set.empty
-reachableFromHere (Cup (mp:rest)) s = reachableFromHere mp s `Set.union` reachableFromHere (Cup rest) s
-reachableFromHere (Cap []) _        = Set.empty
-reachableFromHere (Cap (mp:rest)) s = reachableFromHere (Cap rest) s `Set.intersection` reachableFromHere mp s
-reachableFromHere (Inv mp)        s = reachableFromHere (removeOps (Inv mp)) s
+reachableFromHere _ (Tst f) s         = if boolIsTrue s f then Set.singleton s else Set.empty
+reachableFromHere _(Seq []) s        = Set.singleton s
+reachableFromHere voc (Seq (mp:rest)) s = Set.unions $ Set.map (reachableFromHere voc (Seq rest)) (reachableFromHere voc mp s)
+reachableFromHere _ (Cup []) _        = Set.empty
+reachableFromHere voc (Cup (mp:rest)) s = reachableFromHere voc mp s `Set.union` reachableFromHere voc (Cup rest) s
+reachableFromHere voc (Cap []) _        = allStatesFor voc -- I have changed `Set.empty` into this. This is where the problem comes from!
+reachableFromHere voc (Cap (mp:rest)) s = reachableFromHere voc (Cap rest) s `Set.intersection` reachableFromHere voc mp s
+reachableFromHere voc (Inv mp)        s = reachableFromHere voc (removeOps (Inv mp)) s
 
 -- | Semantics on succinct models, computed explicitly.
 sucIsTrue :: (SuccinctModel, State) -> Form -> Bool
@@ -146,10 +149,10 @@ sucIsTrue a (Disj fs)   = any (sucIsTrue a) fs
 sucIsTrue a (Xor fs)    = odd $ length (filter id $ map (sucIsTrue a) fs)
 sucIsTrue a (Impl f g)  = not (sucIsTrue a f) || sucIsTrue a g
 sucIsTrue a (Equi f g)  = sucIsTrue a f == sucIsTrue a g
-sucIsTrue (m@(SMo _ _ _ mp), s) (K i f) =
+sucIsTrue (m@(SMo voc _ _ mp), s) (K i f) =
    all
     (\s' -> sucIsTrue (m,s') f)
-    (Set.filter (`isStateOf` m) $ reachableFromHere (mp ! i) s)
+    (Set.filter (`isStateOf` m) $ reachableFromHere voc (mp ! i) s)
 sucIsTrue a (Kw i f) = sucIsTrue a (Disj [ K i f, K i (Neg f) ])
 sucIsTrue (m, s) (PubAnnounce f g)  = not (sucIsTrue (m, s) f) || sucIsTrue (m `update` f, s) g
 sucIsTrue _ f = error $ "Operator not implemented: " ++ show f
@@ -325,17 +328,270 @@ randomMenProgWith voc 0 = oneof [ Ass <$> elements voc <*> elements [Top,Bot]
                                 , pure $ Tst Bot
                                 ]
 randomMenProgWith voc n = oneof [ Ass <$> elements voc <*> elements [Top,Bot]
-                                , (\ p (BF f) -> Ass p f) <$> elements voc <*> randomboolformWith voc n
+                                -- , (\ p (BF f) -> Ass p f) <$> elements voc <*> randomboolformWith voc n
                                 , pure $ Tst Top
                                 , pure $ Tst Bot
                                 , (\ (BF f) -> Tst f) <$> randomboolformWith voc n
                                 , (\x y -> Seq [x,y]) <$> rmp <*> rmp
-                                , (\x y z -> Seq [x,y,z]) <$> rmp <*> rmp <*> rmp
+                                -- , (\x y z -> Seq [x,y,z]) <$> rmp <*> rmp <*> rmp
                                 , (\x y -> Cup [x,y]) <$> rmp <*> rmp
-                                , (\x y z -> Cup [x,y,z]) <$> rmp <*> rmp <*> rmp
-                                -- , (\x y -> Cap [x,y]) <$> rmp <*> rmp
+                                -- , (\x y z -> Cup [x,y,z]) <$> rmp <*> rmp <*> rmp
+                                , (\x y -> Cap [x,y]) <$> rmp <*> rmp
                                 -- , (\x y z -> Cap [x,y,z]) <$> rmp <*> rmp <*> rmp
-                                , Inv <$> rmp
+                                -- , Inv <$> rmp
                                 ]
   where
     rmp = randomMenProgWith voc (n `div` 3)
+
+{-
+-- | Given an integer that indicates the number of primes needed, given the number of primes for a prticular proposition, 
+-- output the corresponding number in the new vocabulary.
+-- For example, assuming that there could be two primes in the new vocabulary, for P2', it's mapped to P 7 in the new vocabulary:
++-----------+-------------------+-------------------+
+| Variable  | Single vocabulary | Triple vocabulary |
++==========-+===================+===================+
+| \(p_0  \) | @P 0@             | @P 0@             |
++-----------+-------------------+-------------------+
+| \(p_0' \) |                   | @P 1@             |
++-----------+-------------------+-------------------+
+| \(p_0''\) |                   | @P 2@             |
++-----------+-------------------+-------------------+
+| \(p_1  \) | @P 1@             | @P 3@             |
++-----------+-------------------+-------------------+
+| \(p_1' \) |                   | @P 4@             |
++-----------+-------------------+-------------------+
+| \(p_1''\) |                   | @P 5@             |
++-----------+-------------------+-------------------+
+| \(p_2  \) | @P 2@             | @P 6@             |
++-----------+-------------------+-------------------+
+| \(p_2' \) |                   | @P 7@             |
++-----------+-------------------+-------------------+
+| \(p_2''\) |                   | @P 8@             |
++-----------+-------------------+-------------------+
+...
+-}
+
+mvcpP :: Int -> Int -> Prp -> Prp
+mvcpP n m (P k) = P (k * (n + 1) + m)
+
+unmvcpP :: Int -> Int -> Prp -> Prp
+unmvcpP n m (P x) = P ((x - m) `div` n)
+
+positiveInt :: Gen (Int, Int, Int)
+positiveInt = do
+  Positive x <- arbitrary
+  Positive y <- arbitrary
+  Positive z <- arbitrary
+  return (x, y, z)
+
+mvinverse :: Property
+mvinverse = forAll positiveInt $ \ (n, m, k) ->  P k == unmvcpP n m (mvcpP n m (P k))
+
+-- | The list version of mvcp
+mvcp :: Int -> Int -> [Prp] -> [Prp]
+mvcp n m = map (mvcpP n m)
+
+unmvcp :: Int -> Int -> [Prp] -> [Prp]
+unmvcp n m = map (unmvcpP n m)
+
+-- | Translations from Mental Programs to Bdds in section 5.
+-- The inverse and general assignment operators are assumed to be removed from the mental programs inputs already.
+translationMPToBdd :: [Prp] -> MenProg -> Form
+translationMPToBdd v (Ass prp Top) = Conj [PrpF $ mvcpP 1 1 prp, Conj [ Equi (PrpF $ mvcpP 1 0 q) (PrpF $ mvcpP 1 1 q) | q <- v, prp /= q ]]
+translationMPToBdd v (Ass prp Bot) = Conj [Neg $ PrpF $ mvcpP 1 1 prp, Conj [ Equi (PrpF $ mvcpP 1 0 q) (PrpF $ mvcpP 1 1 q) | q <- v, prp /= q ]]
+translationMPToBdd v (Tst f) = Conj [replPsInF (v `zip` mvcp 1 0 v) f, Conj [ Equi (PrpF $ mvcpP 1 0 q) (PrpF $ mvcpP 1 1 q) | q <- v]]
+translationMPToBdd v (Cup [mp1, mp2]) = Disj [translationMPToBdd v mp1 , translationMPToBdd v mp2]
+translationMPToBdd v (Cap [mp1, mp2]) = Conj [translationMPToBdd v mp1 , translationMPToBdd v mp2]
+translationMPToBdd v (Seq [mp1, mp2]) = replPsInF dictionary1 (exists vprime (Conj [replPsInF dictionary2 (translationMPToBdd v mp1), replPsInF dictionary5 $ replPsInF dictionary4 $ replPsInF dictionary3 (translationMPToBdd v mp2)]))
+  where
+    exists :: [Prp] -> Form -> Form
+    exists [] f = f 
+    exists (p : ps) f = exists ps $ eliminate p f
+    vprime = mvcp 2 1 v
+    dictionary1 = (mvcp 2 0 v `zip` mvcp 1 0 v) ++ (mvcp 2 1 v `zip` mvcp 1 1 v) ++ (mvcp 2 2 v `zip` mvcp 1 1 v)
+    dictionary2 = (mvcp 1 0 v `zip` mvcp 2 0 v) ++ (mvcp 1 1 v `zip` mvcp 2 1 v)
+    dictionary3 = (mvcp 1 0 v `zip` mvcp 2 0 v) ++ (mvcp 1 1 v `zip` mvcp 2 1 v)
+    dictionary4 = mvcp 2 1 v `zip` mvcp 2 2 v
+    dictionary5 = mvcp 2 0 v `zip` mvcp 2 1 v
+translationMPToBdd _ _ = undefined
+
+eliminate :: Prp -> Form -> Form 
+eliminate p f = Disj [SMCDEL.Language.substit p Top f, SMCDEL.Language.substit p Bot f]
+
+eliminatedFormExample1 :: Form 
+eliminatedFormExample1 = SMCDEL.Language.substit (P 1) (Disj [Top, PrpF $ P 3]) (Conj [PrpF $ P 1, PrpF $ P 2])
+
+-- | The substitution function which, given a formula, replaces all occurances of variables in v with v2.
+-- replPsInF :: [(Prp,Prp)] -> Form -> Form
+-- Already implemented from `src/SMCDEL/Language.hs`
+
+-- QuickCheck examples:
+
+
+listToState :: [Prp] -> State
+listToState = IntSet.fromList . map (\(P x) -> x)
+
+translationMPToBddcorrect :: Property
+translationMPToBddcorrect = forAll (fmap (\ws -> P 0 : ws) (sublistOf (map P [1..7]))) $ \voc ->
+                            forAll (randomMenProgWith voc 5) $ \mp ->
+                            forAll (elements (powerset voc)) $ \s ->
+                            forAll (elements (powerset voc)) $ \t ->
+                            areConnected voc mp (listToState s) (listToState t) == boolIsTrue (listToState (mvcp 1 0 s) `IntSet.union` listToState (mvcp 1 1 t)) (translationMPToBdd voc (removeOps mp))
+
+-- The debugging process (All couterexamples fixed already!): 
+-- * This part helped me identify the errors in the definition of: reachableFromHere voc (Cap []) _ = Set.empty
+
+-- -- *** Failed! Falsified (after 36 tests):  
+-- -- [P 3,P 4]
+-- -- Seq [Cap [Tst Top,Ass (P 3) Bot],Tst Top]
+-- -- []
+-- -- []
+
+-- counterExample0 :: Bool 
+-- counterExample0 = areConnected voc mp (listToState s) (listToState t) where 
+--   voc = [P 3, P 4]
+--   mp = Seq [Cap [Tst Top,Ass (P 3) Bot],Tst Top] -- False
+--   -- mp = Cap [Tst Top,Ass (P 3) Bot] -- True
+--   -- mp = Tst Top -- True
+--   -- mp = Seq [Tst Top, Tst Top] -- True
+--   s = []
+--   t = []
+
+
+-- counterExample0Reachable :: Set State
+-- counterExample0Reachable = reachableFromHere voc mp s1 where 
+--   voc = [P 3, P 4]
+--   mp = Cap [Tst Top,Ass (P 3) Bot] -- fromList [], which is wrong
+--   -- mp = Tst Top
+--   s1 = listToState []
+
+-- counterExample0Reachable' :: Set State
+-- -- counterExample0Reachable = reachableFromHere (Ass (P 3) Bot) (listToState []) --fromList [fromList []]
+-- counterExample0Reachable' = reachableFromHere voc (Tst Top) (listToState []) --fromList [fromList []]
+--   where voc = [P 3, P 4]
+
+-- counterExample0Reachable'' :: Set State
+-- counterExample0Reachable'' = reachableFromHere voc (Cap (mp:rest)) s where 
+--   voc = [P 3, P 4]
+--   mp = Tst Top -- fromList [], which is wrong
+--   rest = [Ass (P 3) Bot]
+--   s = listToState []
+
+-- counterExample0Reachable''' :: Set State
+-- counterExample0Reachable''' = reachableFromHere voc (Cap rest) s `Set.intersection` reachableFromHere voc mp s where
+--   voc = [P 3, P 4]
+--   mp = Tst Top -- fromList [], which is wrong
+--   rest = [Ass (P 3) Bot]
+--   s = listToState []
+
+-- counterExample0Reachable'''' :: Set State
+-- counterExample0Reachable'''' = reachableFromHere voc (Cap rest) s where
+--   voc = [P 3, P 4]
+--   mp = Tst Top -- fromList [], which is wrong
+--   rest = [Ass (P 3) Bot]
+--   s = listToState []
+
+-- counterExample0''' :: Bool
+-- counterExample0''' = areConnected voc (Seq rest) s3 s2 where 
+--   voc = [P 3, P 4]
+--   rest = [Tst Top]
+--   s3 = listToState [] 
+--   s2 = listToState []
+
+-- counterExample0'''' :: Bool
+-- counterExample0'''' = any (\ s3 -> areConnected voc (Seq rest) s3 s2) (reachableFromHere voc mp s1) where 
+--   voc = [P 3, P 4]
+--   mp = Cap [Tst Top,Ass (P 3) Bot]
+--   s1 = listToState []
+--   rest = [Tst Top]
+--   s2 = listToState []
+
+-- counterExample0' :: Bool 
+-- counterExample0' = boolIsTrue (listToState (mvcp 1 0 s) `IntSet.union` listToState (mvcp 1 1 t)) (translationMPToBdd voc (removeOps mp)) where 
+--   voc = [P 3, P 4]
+--   mp = Seq [Cap [Tst Top,Ass (P 3) Bot],Tst Top]
+--   s = []
+--   t = []
+
+-- * This part helped me identify the problems with the definition `replPsInF repl (Exists ps f) = Exists (map (replPsInP repl) ps) (replPsInF repl f)`
+
+-- voc1 :: [Prp]
+-- voc1 = map P [0, 1, 2]
+
+-- Counterexample:
+--   *** Failed! Falsified (after 18 tests):  
+-- Cup [Seq [Ass (P 2) Bot,Tst Top],Cup [Tst Top,Tst Bot]]
+-- [P 1,P 2]
+-- [P 0,P 1]
+
+-- counterexample1 :: Bool
+-- counterexample1 = areConnected mp (listToState s) (listToState t) where 
+--   mp = Cup [Seq [Ass (P 2) Bot,Tst Top],Cup [Tst Top,Tst Bot]]
+--   s = [P 1, P 2]
+--   t = [P 0, P 1]
+
+-- counterexample1' :: Bool
+-- counterexample1' = boolIsTrue (listToState (mvcp 1 0 s) `IntSet.union` listToState (mvcp 1 1 t)) (translationMPToBdd voc1 (removeOps mp)) where 
+--   mp = Cup [Seq [Ass (P 2) Bot,Tst Top],Cup [Tst Top,Tst Bot]]
+--   s = [P 1, P 2]
+--   t = [P 0, P 1]
+
+-- counterexample1'' :: Form
+-- counterexample1'' = translationMPToBdd voc1 (removeOps mp) where   
+--   mp = Cup [Seq [Ass (P 2) Bot,Tst Top],Cup [Tst Top,Tst Bot]]
+
+-- counterexample1''' :: Form
+-- counterexample1''' = translationMPToBdd voc1 (removeOps mp) where   
+--   mp = Seq [Ass (P 2) Bot,Tst Top]
+
+-- counterexample1'''' :: Bool
+-- counterexample1'''' = areConnected mp (listToState s) (listToState t) == boolIsTrue (listToState (mvcp 1 0 s) `IntSet.union` listToState (mvcp 1 1 t)) (translationMPToBdd voc1 (removeOps mp)) where 
+--   -- mp = Seq [Ass (P 2) Bot,Tst Top] -- False
+--   -- mp = Ass (P 2) Bot -- True
+--   mp = Tst Top -- True
+--   s = [P 1, P 2]
+--   t = [P 0, P 1]
+
+-- counterexample2 :: Bool
+-- counterexample2 = areConnected mp (listToState s) (listToState t) == boolIsTrue (listToState (mvcp 1 0 s) `IntSet.union` listToState (mvcp 1 1 t)) (translationMPToBdd voc1 (removeOps mp)) where 
+--   -- mp = Seq [Ass (P 1) Top, Ass (P 2) Bot] -- True
+--   -- mp = Seq [Ass (P 2) Bot, Tst Top] -- False
+--   -- mp = Seq [Tst Top, Tst Top] -- False 
+--   -- mp = Seq [Tst Top, Tst Bot] -- True 
+--   mp = Tst Top
+--   s = [P 1, P 2]
+--   t = [P 0, P 1]
+
+-- counterexample2' :: Bool
+-- counterexample2' = areConnected mp (listToState s) (listToState t) == boolIsTrue (listToState (mvcp 1 0 s) `IntSet.union` listToState (mvcp 1 1 t)) (translationMPToBdd voc1 (removeOps mp)) where 
+--   -- mp = Seq [Ass (P 1) Top, Ass (P 2) Bot] -- True
+--   -- mp = Seq [Ass (P 2) Bot, Tst Top] -- False
+--   mp = Seq [Tst Top, Tst Top] -- False 
+--   -- mp = Seq [Tst Top, Tst Bot] -- True 
+--   s = [P 1, P 2]
+--   t = [P 0, P 1]
+
+-- counterexample2'' :: Bool
+-- counterexample2'' = boolIsTrue (listToState (mvcp 1 0 s) `IntSet.union` listToState (mvcp 1 1 t)) (translationMPToBdd voc1 (removeOps mp)) where 
+--   -- mp = Seq [Ass (P 1) Top, Ass (P 2) Bot] -- True
+--   -- mp = Seq [Ass (P 2) Bot, Tst Top] -- False
+--   mp = Seq [Tst Top, Tst Top] -- False 
+--   -- mp = Seq [Tst Top, Tst Bot] -- True 
+--   s = [P 1, P 2]
+--   t = [P 0, P 1]
+
+
+
+-- | Translations from Bdds to Mental Programs in section 5.
+-- Is there any particular reason why we couldn't do pattern matching on Bdd? 
+translationBddToMP :: [Prp] -> Bdd -> MenProg
+translationBddToMP v b
+    | b == bot = Tst Bot
+    | b == top && null v = Tst Top
+    | b == top = Seq [Cup [Ass (head v) Top, Ass (head v) Top], translationBddToMP (tail v) top]
+    | null v = error (show b)
+    | mvP (head v) == P (fromJust $ firstVarOf b) = Cup [Seq [Tst $ Neg $ PrpF (head v), translationBddToMP v (elseOf b)], Seq [Tst $ PrpF (head v), translationBddToMP v (thenOf b)]]
+    | cpP (head v) == P (fromJust $ firstVarOf b) = Cup [Seq [Ass (head v) Bot, translationBddToMP (tail v) (elseOf b)], Seq [Ass (head v) Top, translationBddToMP (tail v) (thenOf b)]]
+    | otherwise = Seq [Cup [Ass (head v) Bot, Ass (head v) Top], translationBddToMP (tail v) b]
+
+
